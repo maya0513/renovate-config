@@ -2,7 +2,7 @@
 
 [English](comparison.md)
 
-確認日：**2026-10-09**。公式の2列は、[`config:recommended`](https://docs.renovatebot.com/presets-config/#configrecommended)と[`config:best-practices`](https://docs.renovatebot.com/presets-config/#configbest-practices)に、継承される標準値を含めた比較です。比較の基準と本リポジトリのvalidatorは、確認日時点のnpm最新安定版であるRenovate **44.148.3**に揃えています。
+確認日：**2026-10-09**。公式の2列は、[`config:recommended`](https://docs.renovatebot.com/presets-config/#configrecommended)と[`config:best-practices`](https://docs.renovatebot.com/presets-config/#configbest-practices)に、継承される標準値を含めた比較です。比較の基準と本リポジトリのvalidatorは、本リポジトリのpnpmの24時間待機ルールを満たす最新安定版、Renovate **44.145.1**に揃えています。
 
 本リポジトリの共通設定は[`default.json`](../default.json)、jdxは[`d574ac27d15201ebe7f30af8a9ab1bb90dd23bb0`](https://github.com/jdx/renovate-config/blob/d574ac27d15201ebe7f30af8a9ab1bb90dd23bb0/default.json)時点の設定を参照しています。利用先リポジトリやBot運営側の上書き設定は比較に含めません。
 

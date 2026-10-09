@@ -2,7 +2,7 @@
 
 [日本語](comparison.ja.md)
 
-Checked on **2026-10-09**. The official columns compare [`config:recommended`](https://docs.renovatebot.com/presets-config/#configrecommended) and [`config:best-practices`](https://docs.renovatebot.com/presets-config/#configbest-practices), including their inherited defaults. The comparison and this repository's validator both use Renovate **44.148.3**, the latest stable npm release checked on this date.
+Checked on **2026-10-09**. The official columns compare [`config:recommended`](https://docs.renovatebot.com/presets-config/#configrecommended) and [`config:best-practices`](https://docs.renovatebot.com/presets-config/#configbest-practices), including their inherited defaults. The comparison and this repository's validator both use Renovate **44.145.1**, the latest stable version eligible under this repository's 24-hour pnpm release-age policy.
 
 This repository's shared settings come from [`default.json`](../default.json). The jdx snapshot is [`d574ac27d15201ebe7f30af8a9ab1bb90dd23bb0`](https://github.com/jdx/renovate-config/blob/d574ac27d15201ebe7f30af8a9ab1bb90dd23bb0/default.json). Repository or bot-host overrides are outside this comparison.
 
