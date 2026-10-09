@@ -1,0 +1,41 @@
+[tools]
+node = "24"
+pnpm = "12"
+actionlint = "1"
+shellcheck = "0"
+zizmor = "1"
+
+[tasks.bootstrap]
+description = "Install locked Node dependencies"
+run = "pnpm install --frozen-lockfile"
+
+[tasks.check]
+description = "Validate the preset, TypeScript, workflows, and regression cases"
+depends = ["validate", "typecheck", "test", "lint"]
+
+[tasks.validate]
+description = "Validate Renovate configuration in strict repository mode"
+depends = ["bootstrap"]
+run = "pnpm exec renovate-config-validator --strict --no-global default.json renovate.json"
+
+[tasks.typecheck]
+description = "Check TypeScript without emitting JavaScript"
+depends = ["bootstrap"]
+run = "pnpm exec tsc --noEmit"
+
+[tasks.test]
+description = "Run preset and reusable workflow regression tests"
+depends = ["bootstrap"]
+run = "node --test --test-isolation=none tests/*.test.ts"
+
+[tasks.lint]
+description = "Check GitHub Actions syntax and security"
+run = [
+  "actionlint -config-file .github/actionlint.yaml .github/workflows/*.yml",
+  "zizmor --offline .github/workflows",
+]
+
+[tasks.dry-run]
+description = "Inspect dependency extraction and updates using the local preset"
+depends = ["bootstrap"]
+run = "node scripts/dry-run.ts"

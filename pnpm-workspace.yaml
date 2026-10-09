@@ -1,0 +1,7 @@
+pmOnFail: ignore
+
+allowBuilds:
+  core-js-pure: false
+  dtrace-provider: false
+  protobufjs: false
+  re2: true

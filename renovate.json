@@ -1,0 +1,11 @@
+{
+  "$schema": "https://docs.renovatebot.com/renovate-schema.json",
+  "extends": ["local>maya0513/renovate-config"],
+  "packageRules": [
+    {
+      "description": "Update npm lockfiles within declared ranges and replace ranges for out-of-range updates",
+      "matchManagers": ["npm"],
+      "rangeStrategy": "update-lockfile"
+    }
+  ]
+}
