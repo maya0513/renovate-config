@@ -2,7 +2,7 @@
 
 [English](comparison.md)
 
-確認日：**2026-10-09**。公式の2列は、[`config:recommended`](https://docs.renovatebot.com/presets-config/#configrecommended)と[`config:best-practices`](https://docs.renovatebot.com/presets-config/#configbest-practices)に、継承される標準値を含めた比較です。比較の基準と本リポジトリのvalidatorは、本リポジトリのpnpmの24時間待機ルールを満たす最新安定版、Renovate **44.145.1**に揃えています。
+確認日：**2026-10-12**。公式の2列は、[`config:recommended`](https://docs.renovatebot.com/presets-config/#configrecommended)と[`config:best-practices`](https://docs.renovatebot.com/presets-config/#configbest-practices)に、継承される標準値を含めた比較です。比較の基準と本リポジトリのvalidatorは、Renovate **44.145.1**に揃えています。
 
 本リポジトリの共通設定は[`default.json`](../default.json)、jdxは[`d574ac27d15201ebe7f30af8a9ab1bb90dd23bb0`](https://github.com/jdx/renovate-config/blob/d574ac27d15201ebe7f30af8a9ab1bb90dd23bb0/default.json)時点の設定を参照しています。利用先リポジトリやBot運営側の上書き設定は比較に含めません。
 
@@ -18,7 +18,7 @@ GitHubのネイティブ自動マージには、**Allow auto-merge**を有効に
 
 | 設定 | `config:recommended` | `config:best-practices` | `local>jdx/renovate-config` | `local>maya0513/renovate-config` |
 | --- | --- | --- | --- | --- |
-| 基盤 | `config:recommended` | `config:recommended`＋7つの追加preset | `config:recommended`＋4つの追加preset | `config:recommended`＋3つの追加preset |
+| 基盤 | `config:recommended` | `config:recommended`＋7つの追加preset | `config:recommended`＋4つの追加preset | `config:recommended`＋4つの追加preset |
 | [検出するmanager](https://docs.renovatebot.com/configuration-options/#enabledmanagers) | 標準で有効なmanager | 同じ。許可リストで限定しない | 同じ。ただしGoのdirectiveは後述の例外あり | 同じ。許可リストで限定しない |
 | 除外パス | 依存物・examples・tests・fixtures | `config:recommended`と同じ | `config:recommended`＋`**/.mise/locks/**`・`**/.config/mise/locks/**` | `local>jdx/renovate-config`と同じ |
 | [曜日・タイムゾーン](https://docs.renovatebot.com/configuration-options/#schedule) | 常時・UTC | 常時・UTC | 火曜日・`America/Chicago` | 火曜日・`Asia/Tokyo` |
@@ -35,7 +35,7 @@ GitHubのネイティブ自動マージには、**Allow auto-merge**を有効に
 | [プラットフォーム側の自動マージ](https://docs.renovatebot.com/configuration-options/#platformautomerge) | `true`。自動マージを有効にした場合に使用 | `config:recommended`と同じ | 標準の`true`を継承 | `true`。GitHubがマージする |
 | [CIチェック](https://docs.renovatebot.com/configuration-options/#ignoretests) | `ignoreTests: false` | `ignoreTests: false` | 標準の`false`を継承。ネイティブ自動マージにはプラットフォームの保護ルールが適用 | 明示的に`false`。GitHubの必須チェックがネイティブ自動マージの条件を管理 |
 | [rebase方針](https://docs.renovatebot.com/configuration-options/#rebasewhen) | `auto` | `auto` | `conflicted` | `auto` |
-| [GitHub ActionsのSHA固定](https://docs.renovatebot.com/presets-helpers/#helperspingithubactiondigests) | 強制しない | 有効 | 有効。ただし`taiki-e/install-action`は除外 | 無効。タグ・ブランチ参照を使用 |
+| [GitHub ActionsのSHA固定](https://docs.renovatebot.com/presets-helpers/#helperspingithubactiondigests) | 強制しない | 有効 | 有効。ただし`taiki-e/install-action`は除外 | 有効 |
 | [Dockerのdigest固定](https://docs.renovatebot.com/presets-docker/#dockerpindigests) | 強制しない | 有効 | 有効 | 有効 |
 | 設定移行PR | 無効 | 有効 | 有効 | 有効 |
 | [保守停止の判定ルール](https://docs.renovatebot.com/presets-abandonments/#abandonmentsrecommended) | 専用presetなし | `abandonments:recommended` | `abandonments:recommended` | `abandonments:recommended` |

@@ -2,7 +2,7 @@
 
 [日本語](comparison.ja.md)
 
-Checked on **2026-10-09**. The official columns compare [`config:recommended`](https://docs.renovatebot.com/presets-config/#configrecommended) and [`config:best-practices`](https://docs.renovatebot.com/presets-config/#configbest-practices), including their inherited defaults. The comparison and this repository's validator both use Renovate **44.145.1**, the latest stable version eligible under this repository's 24-hour pnpm release-age policy.
+Checked on **2026-10-12**. The official columns compare [`config:recommended`](https://docs.renovatebot.com/presets-config/#configrecommended) and [`config:best-practices`](https://docs.renovatebot.com/presets-config/#configbest-practices), including their inherited defaults. The comparison and this repository's validator both use Renovate **44.145.1**.
 
 This repository's shared settings come from [`default.json`](../default.json). The jdx snapshot is [`d574ac27d15201ebe7f30af8a9ab1bb90dd23bb0`](https://github.com/jdx/renovate-config/blob/d574ac27d15201ebe7f30af8a9ab1bb90dd23bb0/default.json). Repository or bot-host overrides are outside this comparison.
 
@@ -18,7 +18,7 @@ For native automerge on GitHub, enable **Allow auto-merge** and require all nece
 
 | Setting | `config:recommended` | `config:best-practices` | `local>jdx/renovate-config` | `local>maya0513/renovate-config` |
 | --- | --- | --- | --- | --- |
-| Base | `config:recommended` | `config:recommended` + seven additional presets | `config:recommended` + four additional presets | `config:recommended` + three additional presets |
+| Base | `config:recommended` | `config:recommended` + seven additional presets | `config:recommended` + four additional presets | `config:recommended` + four additional presets |
 | [Manager detection](https://docs.renovatebot.com/configuration-options/#enabledmanagers) | Default-enabled managers | Same; no allowlist | Same; Go directive exception below | Same; no allowlist |
 | Ignored paths | Dependencies, examples, tests, fixtures | Same as `config:recommended` | `config:recommended` + `**/.mise/locks/**`, `**/.config/mise/locks/**` | Same as `local>jdx/renovate-config` |
 | [Schedule / timezone](https://docs.renovatebot.com/configuration-options/#schedule) | Any time / UTC | Any time / UTC | Tuesday / `America/Chicago` | Tuesday / `Asia/Tokyo` |
@@ -35,7 +35,7 @@ For native automerge on GitHub, enable **Allow auto-merge** and require all nece
 | [Platform automerge](https://docs.renovatebot.com/configuration-options/#platformautomerge) | `true`, inactive until automerge is enabled | Same as `config:recommended` | `true` inherited | `true`; GitHub performs the merge |
 | [CI checks](https://docs.renovatebot.com/configuration-options/#ignoretests) | `ignoreTests: false` | `ignoreTests: false` | Inherited `false`; platform protections govern native automerge | Explicit `false`; required GitHub checks govern native automerge |
 | [Rebase policy](https://docs.renovatebot.com/configuration-options/#rebasewhen) | `auto` | `auto` | `conflicted` | `auto` |
-| [GitHub Actions SHA pinning](https://docs.renovatebot.com/presets-helpers/#helperspingithubactiondigests) | Not enforced | Enabled | Enabled except `taiki-e/install-action` | Disabled; use tag or branch references |
+| [GitHub Actions SHA pinning](https://docs.renovatebot.com/presets-helpers/#helperspingithubactiondigests) | Not enforced | Enabled | Enabled except `taiki-e/install-action` | Enabled |
 | [Docker digest pinning](https://docs.renovatebot.com/presets-docker/#dockerpindigests) | Not enforced | Enabled | Enabled | Enabled |
 | Config migration PRs | Disabled | Enabled | Enabled | Enabled |
 | [Abandonment rules](https://docs.renovatebot.com/presets-abandonments/#abandonmentsrecommended) | No abandonment preset | `abandonments:recommended` | `abandonments:recommended` | `abandonments:recommended` |

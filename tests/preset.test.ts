@@ -286,7 +286,7 @@ test('local dry-run respects ignored presets and an absent self reference', asyn
   assert.equal(absent.dependencyDashboard, true);
 });
 
-test('GitHub Actions and reusable workflows keep tag or branch references without SHA pinning', async () => {
+test('GitHub Actions and reusable workflows are eligible for SHA pinning', async () => {
   const extracted = await extractActions(`jobs:
   mise-lock:
     uses: maya0513/renovate-config/.github/workflows/mise-lock.yml@main
@@ -310,12 +310,13 @@ test('GitHub Actions and reusable workflows keep tag or branch references withou
   assert.equal(result.length, 5);
   for (const update of result) {
     const shared = update.depName === 'maya0513/renovate-config' && update.depType === 'workflow';
-    assert.equal(update.pinDigests, false);
+    assert.equal(update.pinDigests, true);
+    assert.equal(update.automerge, true);
     if (shared) assert.equal(update.currentValue, 'main');
   }
 });
 
-test('workflow tags resolve as versioned GitHub Actions releases without SHA pins', async () => {
+test('workflow actions use SHA pins with versioned release comments', async () => {
   const directory = new URL('../.github/workflows/', import.meta.url);
   const actions: PackageDependency[] = [];
   for (const name of readdirSync(directory).filter((name) => name.endsWith('.yml'))) {
@@ -326,7 +327,7 @@ test('workflow tags resolve as versioned GitHub Actions releases without SHA pin
   for (const action of actions) {
     assert(action.currentValue);
     assert.match(action.currentValue, /^v\d+\.\d+\.\d+$/);
-    assert.equal(action.currentDigest, undefined);
+    assert.match(action.currentDigest ?? '', /^[a-f0-9]{40}$/);
     assert.equal(action.datasource, 'github-tags');
     assert.equal(action.skipReason, undefined);
     assert.notEqual(action.enabled, false);

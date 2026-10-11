@@ -1,5 +1,4 @@
 pmOnFail: ignore
-minimumReleaseAge: 1440
 
 allowBuilds:
   core-js-pure: false

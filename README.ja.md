@@ -4,6 +4,8 @@
 
 他のGitHubリポジトリでRenovateを使うための共通presetです。自分用
 
+[lockfile運用の注意点](docs/lockfile-operations.ja.md)
+
 [Mend Renovate App](https://github.com/apps/renovate)をインストールし、対象リポジトリを選択します。そのリポジトリの既定ブランチに`renovate.json`を追加してください。既存の設定がある場合は、`extends`にpresetの参照を追加します。
 
 ```json
