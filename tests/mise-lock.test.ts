@@ -3,10 +3,12 @@ import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { test } from 'node:test';
 import { runInNewContext } from 'node:vm';
+import { parse } from 'yaml';
 import { fixture, git, miseLockJob, write } from './helpers/mise-lock.ts';
 
 test('only the real Renovate sender on a Renovate push can regenerate locks', () => {
-  const allowed = (eventName: string, senderId: number, ref: string, login = 'renovate[bot]'): boolean => runInNewContext(miseLockJob.if, {
+  const allowed = (eventName: string, senderId: number, ref: string, login = 'renovate[bot]', verifyOnly = false): boolean => runInNewContext(miseLockJob.if, {
+    inputs: { 'verify-only': verifyOnly },
     github: { event_name: eventName, event: { sender: { id: senderId, login } }, ref },
     startsWith: (value: string, prefix: string) => value.startsWith(prefix),
   }, { timeout: 1000 });
@@ -15,7 +17,77 @@ test('only the real Renovate sender on a Renovate push can regenerate locks', ()
   assert.equal(allowed('push', 41898282, 'refs/heads/renovate/npm-non-major', 'github-actions[bot]'), false);
   assert.equal(allowed('push', 29139614, 'refs/heads/main'), false);
   assert.equal(allowed('pull_request', 29139614, 'refs/heads/renovate/test'), false);
+  assert.equal(allowed('pull_request', 123, 'refs/pull/1/merge', 'human', true), true);
+  assert.equal(allowed('push', 41898282, 'refs/heads/renovate/test', 'github-actions[bot]', true), true);
+  assert.equal(allowed('push', 123, 'refs/heads/main', 'human', true), true);
+  assert.equal(allowed('workflow_dispatch', 123, 'refs/heads/main', 'human', true), true);
 });
+
+test('verification is called on every CI event without App credentials and cannot push', () => {
+  const ci = parse(readFileSync(new URL('../.github/workflows/ci.yml', import.meta.url), 'utf8'));
+  assert.deepEqual(Object.keys(ci.on).sort(), ['pull_request', 'push', 'workflow_dispatch']);
+  const verification = ci.jobs['dependency-artifacts'];
+  assert.equal(verification.uses, '$/.github/workflows/mise-lock.yml');
+  assert.deepEqual(verification.with, { 'verify-only': true });
+  assert.equal(verification.if, undefined);
+  assert.equal(verification.secrets, undefined);
+  const workflow = parse(readFileSync(new URL('../.github/workflows/mise-lock.yml', import.meta.url), 'utf8'));
+  assert.equal(workflow.on.workflow_call.inputs['verify-only'].default, false);
+  assert.equal(workflow.on.workflow_call.inputs['app-client-id'].required, false);
+  assert.equal(workflow.on.workflow_call.secrets['app-private-key'].required, false);
+  assert.deepEqual(workflow.permissions, { contents: 'read' });
+  for (const id of ['credentials', 'app-token', 'push']) {
+    const step = miseLockJob.steps.find(step => step.id === id)!;
+    const expression = step.if!.replace(/^\$\{\{\s*|\s*\}\}$/g, '');
+    for (const verifyOnly of [false, true]) {
+      assert.equal(runInNewContext(expression, {
+        inputs: { 'verify-only': verifyOnly }, steps: { update: { outputs: { changed: 'true' } } },
+      }), !verifyOnly, `${id}: verify-only=${verifyOnly}`);
+    }
+  }
+});
+
+test('update mode rejects either missing App credential before regeneration', t => {
+  const f = fixture(t);
+  for (const [client, key] of [['', ''], ['client', ''], ['', 'private-key']]) {
+    assert.throws(() => f.run('credentials', { APP_CLIENT_ID: client, APP_PRIVATE_KEY: key }));
+  }
+  f.run('credentials', { APP_CLIENT_ID: 'client', APP_PRIVATE_KEY: 'private-key' });
+  assert.equal(readFileSync(f.log, 'utf8'), '');
+  assert.equal(git(f.repo, 'rev-parse', 'HEAD'), f.base);
+});
+
+test('unchanged verification succeeds without committing or changing the remote', t => {
+  const f = fixture(t);
+  f.update({ VERIFY_ONLY: 'true', NO_CHANGE: '1', TASK_NO_CHANGE: '1', POST_UPDATE_TASK: 'generate', POST_UPDATE_PATHS: 'generated docs' });
+  assert.equal(f.outputs().changed, 'false');
+  assert.equal(git(f.repo, 'rev-parse', 'HEAD'), f.base);
+  assert.equal(git(f.root, '--git-dir', f.remote, 'rev-parse', 'refs/heads/renovate/test'), f.base);
+  assert.equal(git(f.repo, 'status', '--porcelain'), '');
+  assert.match(readFileSync(f.log, 'utf8'), /\|0\|run -- generate/);
+});
+
+for (const [description, files, overrides] of [
+  ['changed lockfile', { 'mise.lock': 'old\n' }, {}],
+  ['new sidecar', { 'mise.lock': 'old\n' }, { SIDECARS: '1', LOCK_NO_CHANGE: '1' }],
+  ['removed sidecar', { 'mise.lock': 'old\n', '.mise/locks/old/package.lock': 'old graph\n' }, { REMOVE_SIDECARS: '1', LOCK_NO_CHANGE: '1' }],
+  ['changed sidecar', { 'mise.lock': 'old\n', '.mise/locks/new/package.lock': 'old graph\n' }, { SIDECARS: '1', LOCK_NO_CHANGE: '1' }],
+  ['generated files', { 'mise.lock': 'old\n', 'generated docs/reference.txt': 'old\n', 'generated docs/removed.txt': 'old\n' }, { NO_CHANGE: '1', POST_UPDATE_TASK: 'generate', POST_UPDATE_PATHS: 'generated docs', STAGE_UNRELATED: '1' }],
+] satisfies [string, Record<string, string>, NodeJS.ProcessEnv][]) {
+  test(`verification rejects ${description} without committing or pushing`, t => {
+    const f = fixture(t, files);
+    assert.throws(() => f.update({ ...overrides, VERIFY_ONLY: 'true' }), error => {
+      assert(error instanceof Error && 'stdout' in error);
+      assert.match(String(error.stdout), /Dependency artifacts are out of date/);
+      return true;
+    });
+    assert.notEqual(f.outputs().changed, 'true');
+    assert.equal(git(f.repo, 'rev-parse', 'HEAD'), f.base);
+    assert.equal(git(f.root, '--git-dir', f.remote, 'rev-parse', 'refs/heads/renovate/test'), f.base);
+    if (description !== 'changed lockfile') assert(!git(f.repo, 'diff', '--cached', '--name-only').split('\n').includes('mise.lock'));
+    assert(!git(f.repo, 'diff', '--cached', '--name-only').includes('unrelated.txt'));
+  });
+}
 
 test('a repository without tracked lockfiles needs no commit or mise command', (t) => {
   const f = fixture(t, {});

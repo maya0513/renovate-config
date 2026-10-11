@@ -19,6 +19,9 @@
   "automergeType": "pr",
   "platformAutomerge": true,
   "ignoreTests": false,
+  "statusCheckWhen": {
+    "artifactError": "always"
+  },
   "rebaseWhen": "auto",
   "separateMajorMinor": true,
   "gitIgnoredAuthors": [

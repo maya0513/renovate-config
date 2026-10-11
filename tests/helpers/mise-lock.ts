@@ -93,7 +93,7 @@ if [[ "$1" == run ]]; then
 fi
 if [[ "\${FAIL_LOCK:-0}" == 1 ]]; then exit 8; fi
 if [[ "\${NO_CHANGE:-0}" == 1 ]]; then exit 0; fi
-printf 'updated %s\\n' "$lock" > "$lock"
+if [[ "\${LOCK_NO_CHANGE:-0}" != 1 ]]; then printf 'updated %s\\n' "$lock" > "$lock"; fi
 if [[ "\${SIDECARS:-0}" == 1 ]]; then
   mkdir -p "$sidecars/new"
   printf 'native dependency lock\\n' > "$sidecars/new/package.lock"
@@ -174,6 +174,7 @@ export function fixture(t: TestContext, files: Record<string, string> = { 'mise.
     RUNNER_TEMP: runnerTemp,
     POST_UPDATE_TASK: '',
     POST_UPDATE_PATHS: '',
+    VERIFY_ONLY: 'false',
   };
 
   function outputs(): Record<string, string> {

@@ -13,6 +13,10 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
+  dependency-artifacts:
+    uses: $/.github/workflows/mise-lock.yml
+    with:
+      verify-only: true
   check:
     name: check
     runs-on: ubuntu-latest

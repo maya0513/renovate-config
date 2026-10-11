@@ -1,4 +1,9 @@
 paths:
+  .github/workflows/ci.yml:
+    ignore:
+      # GitHub supports this exact-commit reference; actionlint does not yet.
+      # Remove after https://github.com/rhysd/actionlint/issues/711 is fixed.
+      - '^reusable workflow call "\$/\.github/workflows/mise-lock\.yml" at "uses" is not following the format '
   .github/workflows/update-mise-lock.yml:
     ignore:
       # GitHub supports this exact-commit reference; actionlint does not yet.
