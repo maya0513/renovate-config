@@ -290,7 +290,36 @@ test('local dry-run respects ignored presets and an absent self reference', asyn
   assert.equal(absent.dependencyDashboard, true);
 });
 
-test('workflow SHA comments resolve as versioned GitHub Actions releases', async () => {
+test('GitHub Actions and reusable workflows keep tag or branch references without SHA pinning', async () => {
+  const extracted = await extractActions(`jobs:
+  mise-lock:
+    uses: maya0513/renovate-config/.github/workflows/mise-lock.yml@main
+  vite-plus-lock:
+    uses: maya0513/renovate-config/.github/workflows/vite-plus-lock.yml@main
+  external:
+    uses: example/workflows/.github/workflows/check.yml@v1
+  check:
+    steps:
+      - uses: actions/checkout@v7
+      - uses: maya0513/renovate-config/example-action@v1
+`, '.github/workflows/consumer.yml');
+  assert.equal(extracted?.deps.length, 5);
+  const dependencies = extracted!.deps.map(dependency => ({
+    ...dependency,
+    // Renovate normalizes this field between extraction and update flattening.
+    packageName: dependency.packageName ?? dependency.depName,
+    updates: [{ updateType: 'pinDigest' as const, newValue: dependency.currentValue ?? undefined, newDigest: 'a'.repeat(40) }],
+  }));
+  const result = await updates('github-actions', dependencies);
+  assert.equal(result.length, 5);
+  for (const update of result) {
+    const shared = update.depName === 'maya0513/renovate-config' && update.depType === 'workflow';
+    assert.equal(update.pinDigests, false);
+    if (shared) assert.equal(update.currentValue, 'main');
+  }
+});
+
+test('workflow tags resolve as versioned GitHub Actions releases without SHA pins', async () => {
   const directory = new URL('../.github/workflows/', import.meta.url);
   const actions: PackageDependency[] = [];
   for (const name of readdirSync(directory).filter((name) => name.endsWith('.yml'))) {
@@ -299,9 +328,9 @@ test('workflow SHA comments resolve as versioned GitHub Actions releases', async
   }
   assert(actions.length > 0);
   for (const action of actions) {
-    assert(action.currentValue && action.currentDigest);
+    assert(action.currentValue);
     assert.match(action.currentValue, /^v\d+\.\d+\.\d+$/);
-    assert.match(action.currentDigest, /^[a-f0-9]{40}$/);
+    assert.equal(action.currentDigest, undefined);
     assert.equal(action.datasource, 'github-tags');
     assert.equal(action.skipReason, undefined);
     assert.notEqual(action.enabled, false);

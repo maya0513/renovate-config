@@ -1,0 +1,6 @@
+rules:
+  unpinned-uses:
+    config:
+      policies:
+        # This repository uses tags and branches instead of SHA pins.
+        "*": ref-pin

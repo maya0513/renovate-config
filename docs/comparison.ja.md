@@ -18,7 +18,7 @@ GitHubのネイティブ自動マージには、**Allow auto-merge**を有効に
 
 | 設定 | `config:recommended` | `config:best-practices` | `local>jdx/renovate-config` | `local>maya0513/renovate-config` |
 | --- | --- | --- | --- | --- |
-| 基盤 | `config:recommended` | `config:recommended`＋7つの追加preset | `config:recommended`＋後述の4つの追加preset | `config:recommended`＋同じ4つの追加preset |
+| 基盤 | `config:recommended` | `config:recommended`＋7つの追加preset | `config:recommended`＋4つの追加preset | `config:recommended`＋3つの追加preset |
 | [検出するmanager](https://docs.renovatebot.com/configuration-options/#enabledmanagers) | 標準で有効なmanager | 同じ。許可リストで限定しない | 同じ。ただしGoのdirectiveは後述の例外あり | 同じ。許可リストで限定しない |
 | 除外パス | 依存物・examples・tests・fixtures | `config:recommended`と同じ | `config:recommended`＋`**/.mise/locks/**`・`**/.config/mise/locks/**` | `local>jdx/renovate-config`と同じ |
 | [曜日・タイムゾーン](https://docs.renovatebot.com/configuration-options/#schedule) | 常時・UTC | 常時・UTC | 火曜日・`America/Chicago` | 火曜日・`Asia/Tokyo` |
@@ -35,7 +35,7 @@ GitHubのネイティブ自動マージには、**Allow auto-merge**を有効に
 | [プラットフォーム側の自動マージ](https://docs.renovatebot.com/configuration-options/#platformautomerge) | `true`。自動マージを有効にした場合に使用 | `config:recommended`と同じ | 標準の`true`を継承 | `true`。GitHubがマージする |
 | [CIチェック](https://docs.renovatebot.com/configuration-options/#ignoretests) | `ignoreTests: false` | `ignoreTests: false` | 標準の`false`を継承。ネイティブ自動マージにはプラットフォームの保護ルールが適用 | 明示的に`false`。GitHubの必須チェックがネイティブ自動マージの条件を管理 |
 | [rebase方針](https://docs.renovatebot.com/configuration-options/#rebasewhen) | `auto` | `auto` | `conflicted` | `auto` |
-| [GitHub ActionsのSHA固定](https://docs.renovatebot.com/presets-helpers/#helperspingithubactiondigests) | 強制しない | 有効 | 有効。ただし`taiki-e/install-action`は除外 | 有効 |
+| [GitHub ActionsのSHA固定](https://docs.renovatebot.com/presets-helpers/#helperspingithubactiondigests) | 強制しない | 有効 | 有効。ただし`taiki-e/install-action`は除外 | 無効。タグ・ブランチ参照を使用 |
 | [Dockerのdigest固定](https://docs.renovatebot.com/presets-docker/#dockerpindigests) | 強制しない | 有効 | 有効 | 有効 |
 | 設定移行PR | 無効 | 有効 | 有効 | 有効 |
 | [保守停止の判定ルール](https://docs.renovatebot.com/presets-abandonments/#abandonmentsrecommended) | 専用presetなし | `abandonments:recommended` | `abandonments:recommended` | `abandonments:recommended` |
@@ -45,8 +45,6 @@ GitHubのネイティブ自動マージには、**Allow auto-merge**を有効に
 | Go固有の上書き | 追加なし | 追加なし | `go` directiveの更新を無効化し、`gomodTidy`を有効化 | 追加なし |
 | npmのrange方針 | managerの標準値（`auto`） | 開発用依存は`pin`、それ以外はmanagerの標準値 | managerの標準値（`auto`） | 共通presetはmanagerの標準値（`auto`） |
 | 補助コミットの無視対象作者 | 追加なし | 追加なし | `github-actions[bot]`のメールアドレス | `github-actions[bot]`のメールアドレス |
-
-jdxと本リポジトリの独自presetは、`config:recommended`に`docker:pinDigests`・`helpers:pinGitHubActionDigests`・`:configMigration`・`abandonments:recommended`を追加しています。Renovate公式の[`config:best-practices`](https://docs.renovatebot.com/presets-config/#configbest-practices)は、この4つに加えて[`:pinDevDependencies`](https://docs.renovatebot.com/presets-default/#pindevdependencies)・[`security:minimumReleaseAgeNpm`](https://docs.renovatebot.com/presets-security/#securityminimumreleaseagenpm)・[`:maintainLockFilesWeekly`](https://docs.renovatebot.com/presets-default/#maintainlockfilesweekly)を含みます。
 
 `config:best-practices`のnpm待機ルールは、lockfile maintenance・置き換え・pin・リリースタイムスタンプを持たない更新種別を対象外にします。開発用依存の完全固定は`devDependencies`・`dev-dependencies`・`dev`に適用されます。[npm待機のルール](https://docs.renovatebot.com/presets-security/#securityminimumreleaseagenpm)、[開発用依存の固定](https://docs.renovatebot.com/presets-default/#pindevdependencies)
 

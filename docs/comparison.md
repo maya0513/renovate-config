@@ -18,7 +18,7 @@ For native automerge on GitHub, enable **Allow auto-merge** and require all nece
 
 | Setting | `config:recommended` | `config:best-practices` | `local>jdx/renovate-config` | `local>maya0513/renovate-config` |
 | --- | --- | --- | --- | --- |
-| Base | `config:recommended` | `config:recommended` + seven additional presets | `config:recommended` + four additional presets listed below | `config:recommended` + the same four presets |
+| Base | `config:recommended` | `config:recommended` + seven additional presets | `config:recommended` + four additional presets | `config:recommended` + three additional presets |
 | [Manager detection](https://docs.renovatebot.com/configuration-options/#enabledmanagers) | Default-enabled managers | Same; no allowlist | Same; Go directive exception below | Same; no allowlist |
 | Ignored paths | Dependencies, examples, tests, fixtures | Same as `config:recommended` | `config:recommended` + `**/.mise/locks/**`, `**/.config/mise/locks/**` | Same as `local>jdx/renovate-config` |
 | [Schedule / timezone](https://docs.renovatebot.com/configuration-options/#schedule) | Any time / UTC | Any time / UTC | Tuesday / `America/Chicago` | Tuesday / `Asia/Tokyo` |
@@ -35,7 +35,7 @@ For native automerge on GitHub, enable **Allow auto-merge** and require all nece
 | [Platform automerge](https://docs.renovatebot.com/configuration-options/#platformautomerge) | `true`, inactive until automerge is enabled | Same as `config:recommended` | `true` inherited | `true`; GitHub performs the merge |
 | [CI checks](https://docs.renovatebot.com/configuration-options/#ignoretests) | `ignoreTests: false` | `ignoreTests: false` | Inherited `false`; platform protections govern native automerge | Explicit `false`; required GitHub checks govern native automerge |
 | [Rebase policy](https://docs.renovatebot.com/configuration-options/#rebasewhen) | `auto` | `auto` | `conflicted` | `auto` |
-| [GitHub Actions SHA pinning](https://docs.renovatebot.com/presets-helpers/#helperspingithubactiondigests) | Not enforced | Enabled | Enabled except `taiki-e/install-action` | Enabled |
+| [GitHub Actions SHA pinning](https://docs.renovatebot.com/presets-helpers/#helperspingithubactiondigests) | Not enforced | Enabled | Enabled except `taiki-e/install-action` | Disabled; use tag or branch references |
 | [Docker digest pinning](https://docs.renovatebot.com/presets-docker/#dockerpindigests) | Not enforced | Enabled | Enabled | Enabled |
 | Config migration PRs | Disabled | Enabled | Enabled | Enabled |
 | [Abandonment rules](https://docs.renovatebot.com/presets-abandonments/#abandonmentsrecommended) | No abandonment preset | `abandonments:recommended` | `abandonments:recommended` | `abandonments:recommended` |
@@ -45,8 +45,6 @@ For native automerge on GitHub, enable **Allow auto-merge** and require all nece
 | Go-specific overrides | None added | None added | Disable updates to the `go` directive; enable `gomodTidy` | None added |
 | npm range strategy | Manager default (`auto`) | `pin` for development dependencies; otherwise manager default | Manager default (`auto`) | Manager default (`auto`) in shared preset |
 | Ignored supplemental commit author | None added | None added | `github-actions[bot]` email | `github-actions[bot]` email |
-
-The custom presets from jdx and this repository add `docker:pinDigests`, `helpers:pinGitHubActionDigests`, `:configMigration`, and `abandonments:recommended` to `config:recommended`. Renovate's official [`config:best-practices`](https://docs.renovatebot.com/presets-config/#configbest-practices) adds those four plus [`:pinDevDependencies`](https://docs.renovatebot.com/presets-default/#pindevdependencies), [`security:minimumReleaseAgeNpm`](https://docs.renovatebot.com/presets-security/#securityminimumreleaseagenpm), and [`:maintainLockFilesWeekly`](https://docs.renovatebot.com/presets-default/#maintainlockfilesweekly).
 
 The npm release-age rule in `config:best-practices` exempts lockfile maintenance, replacements, pins, and update types without release timestamps. Its development dependency pinning matches `devDependencies`, `dev-dependencies`, and `dev`. [npm age policy](https://docs.renovatebot.com/presets-security/#securityminimumreleaseagenpm), [development dependency pinning](https://docs.renovatebot.com/presets-default/#pindevdependencies)
 
