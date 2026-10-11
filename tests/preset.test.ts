@@ -11,11 +11,18 @@ import type { RenovateConfig, UpdateType } from 'renovate/dist/config/types.js';
 import { mergeChildConfig } from 'renovate/dist/config/utils.js';
 import { init as initLogger } from 'renovate/dist/logger/index.js';
 import type { PackageDependency } from 'renovate/dist/modules/manager/types.js';
+import type { BranchUpgradeConfig } from 'renovate/dist/workers/types.js';
 import { extractPackageFile as extractMise } from 'renovate/dist/modules/manager/mise/extract.js';
 import { updateLockedDependency } from 'renovate/dist/modules/manager/mise/update-locked.js';
 import { extractPackageFile as extractNpm } from 'renovate/dist/modules/manager/npm/extract/index.js';
 import { extractPackageFile as extractActions } from 'renovate/dist/modules/manager/github-actions/extract.js';
 import { api as npmVersioning } from 'renovate/dist/modules/versioning/npm/index.js';
+import { getNodeToolConstraint } from 'renovate/dist/modules/manager/npm/post-update/node-version.js';
+import { getPackageManagerVersion, lazyLoadPackageJson } from 'renovate/dist/modules/manager/npm/post-update/utils.js';
+import platformApis from 'renovate/dist/modules/platform/api.js';
+import { setPlatformApi } from 'renovate/dist/modules/platform/index.js';
+import type { BranchStatusConfig } from 'renovate/dist/modules/platform/types.js';
+import { setArtifactErrorStatus } from 'renovate/dist/workers/repository/update/branch/artifacts.js';
 import { checkMinimumReleaseAge } from 'renovate/dist/util/minimum-release-age.js';
 import { flattenUpdates } from 'renovate/dist/workers/repository/updates/flatten.js';
 import { cronMatches, isScheduledNow } from 'renovate/dist/workers/repository/update/branch/schedule.js';
@@ -200,6 +207,66 @@ test('weekly lockfile maintenance keeps platform-native automerge', async () => 
   assert.deepEqual(maintenance.schedule, ['* * * * 2']);
 });
 
+test('artifact status reports success as well as failure', async () => {
+  const previous = platformApis.get('github')!;
+  const statuses: BranchStatusConfig[] = [];
+  try {
+    platformApis.set('github', {
+      ...previous,
+      getBranchStatusCheck: async () => null,
+      setBranchStatus: async status => { statuses.push(status); },
+    });
+    setPlatformApi('github');
+    await setArtifactErrorStatus({ ...config, branchName: 'renovate/test', artifactErrors: [] });
+    await setArtifactErrorStatus({ ...config, branchName: 'renovate/test', artifactErrors: [{ fileName: 'mise.lock', stderr: 'failed to regenerate' }] });
+    assert.deepEqual(statuses.map(({ context, state }) => ({ context, state })), [
+      { context: 'renovate/artifacts', state: 'green' },
+      { context: 'renovate/artifacts', state: 'red' },
+    ]);
+  } finally {
+    platformApis.set('github', previous);
+    setPlatformApi('github');
+  }
+});
+
+test('npm artifact generation selects the exact Node and pnpm versions declared in mise', async () => {
+  const tools = await extractMise(readFileSync(new URL('../mise.toml', import.meta.url), 'utf8'), 'mise.toml');
+  assert(tools);
+  const pkg = lazyLoadPackageJson('.');
+  const node = await getNodeToolConstraint(config, [], '.', pkg);
+  const pnpm = getPackageManagerVersion('pnpm', await pkg.getValue());
+  assert.equal(node.constraint, tools.deps.find(dep => dep.depName === 'node')?.currentValue);
+  assert.equal(pnpm, tools.deps.find(dep => dep.depName === 'pnpm')?.currentValue);
+  assert.match(node.constraint!, /^\d+\.\d+\.\d+$/);
+  assert.match(pnpm!, /^\d+\.\d+\.\d+$/);
+});
+
+test('repository tool updates group npm and mise per tool and preserve manual majors', async () => {
+  const ownConfig: RenovateConfig = JSON.parse(readFileSync(new URL('../renovate.json', import.meta.url), 'utf8'));
+  const ownResolved = mergeChildConfig(config, await resolveLocalConfig(preset, ownConfig));
+  const npm = await extractNpm(readFileSync(new URL('../package.json', import.meta.url), 'utf8'), 'package.json', {});
+  const mise = await extractMise(readFileSync(new URL('../mise.toml', import.meta.url), 'utf8'), 'mise.toml');
+  assert(npm && mise);
+  for (const type of ['minor', 'major'] as const) {
+    const decorate = (dependency: PackageDependency): PackageDependency => ({
+      ...dependency,
+      currentVersion: '1.0.0',
+      updates: dep(dependency.depName!, type, '1.0.0', type === 'minor' ? '1.1.0' : '2.0.0').updates,
+    });
+    const result: BranchUpgradeConfig[] = (await flattenUpdates(ownResolved, {
+      npm: [{ packageFile: 'package.json', deps: npm.deps.filter(dep => dep.depName === 'node' || dep.depName === 'pnpm').map(decorate) }],
+      mise: [{ packageFile: 'mise.toml', deps: mise.deps.filter(dep => dep.depName === 'node' || dep.depName === 'pnpm').map(decorate) }],
+    })).filter(update => !update.isLockFileMaintenance);
+    assert.equal(result.length, 4);
+    const node = result.filter(update => update.depName === 'node');
+    const pnpm = result.filter(update => update.depName === 'pnpm');
+    assert.equal(node[0]?.branchName, node[1]?.branchName);
+    assert.equal(pnpm[0]?.branchName, pnpm[1]?.branchName);
+    assert.notEqual(node[0]?.branchName, pnpm[0]?.branchName);
+    assert(result.every(update => update.automerge === (type === 'minor')));
+  }
+});
+
 test('repository mise tools use exact patch versions matching the lockfile', async () => {
   const extracted = await extractMise(readFileSync(new URL('../mise.toml', import.meta.url), 'utf8'), 'mise.toml');
   assert(extracted?.deps.length);
@@ -239,7 +306,7 @@ test('mise lockfile updates preserve the major requests in the source config', a
 test('npm caret ranges keep in-range declarations and propose manual major updates', async () => {
   const extracted = await extractNpm(readFileSync(new URL('../package.json', import.meta.url), 'utf8'), 'package.json', {});
   assert(extracted?.deps.length);
-  for (const dependency of extracted.deps) {
+  for (const dependency of extracted.deps.filter(dep => dep.depType === 'devDependencies')) {
     assert(dependency.currentValue);
     assert.match(dependency.currentValue, /^\^\d+\.\d+\.\d+$/);
   }
@@ -286,7 +353,7 @@ test('local dry-run respects ignored presets and an absent self reference', asyn
   assert.equal(absent.dependencyDashboard, true);
 });
 
-test('GitHub Actions and reusable workflows keep tag or branch references without SHA pinning', async () => {
+test('GitHub Actions and reusable workflows are eligible for SHA pinning', async () => {
   const extracted = await extractActions(`jobs:
   mise-lock:
     uses: maya0513/renovate-config/.github/workflows/mise-lock.yml@main
@@ -310,12 +377,13 @@ test('GitHub Actions and reusable workflows keep tag or branch references withou
   assert.equal(result.length, 5);
   for (const update of result) {
     const shared = update.depName === 'maya0513/renovate-config' && update.depType === 'workflow';
-    assert.equal(update.pinDigests, false);
+    assert.equal(update.pinDigests, true);
+    assert.equal(update.automerge, true);
     if (shared) assert.equal(update.currentValue, 'main');
   }
 });
 
-test('workflow tags resolve as versioned GitHub Actions releases without SHA pins', async () => {
+test('workflow actions use SHA pins with versioned release comments', async () => {
   const directory = new URL('../.github/workflows/', import.meta.url);
   const actions: PackageDependency[] = [];
   for (const name of readdirSync(directory).filter((name) => name.endsWith('.yml'))) {
@@ -326,7 +394,7 @@ test('workflow tags resolve as versioned GitHub Actions releases without SHA pin
   for (const action of actions) {
     assert(action.currentValue);
     assert.match(action.currentValue, /^v\d+\.\d+\.\d+$/);
-    assert.equal(action.currentDigest, undefined);
+    assert.match(action.currentDigest ?? '', /^[a-f0-9]{40}$/);
     assert.equal(action.datasource, 'github-tags');
     assert.equal(action.skipReason, undefined);
     assert.notEqual(action.enabled, false);

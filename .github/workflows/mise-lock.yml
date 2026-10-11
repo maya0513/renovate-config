@@ -3,10 +3,16 @@ name: mise-lock
 on:
   workflow_call:
     inputs:
+      verify-only:
+        description: Regenerate and fail on artifact differences without committing or pushing
+        required: false
+        type: boolean
+        default: false
       app-client-id:
-        description: Client ID of the GitHub App installed on the caller repository
-        required: true
+        description: GitHub App client ID, required only when verify-only is false
+        required: false
         type: string
+        default: ""
       post-update-task:
         description: Optional mise task that regenerates dependency-derived files
         required: false
@@ -19,8 +25,8 @@ on:
         default: ""
     secrets:
       app-private-key:
-        description: Private key of the GitHub App with Contents write permission
-        required: true
+        description: GitHub App private key, required only when verify-only is false
+        required: false
 
 permissions:
   contents: read
@@ -28,21 +34,35 @@ permissions:
 jobs:
   mise-lock:
     if: >-
-      github.event_name == 'push' &&
+      inputs['verify-only'] ||
+      (github.event_name == 'push' &&
       github.event.sender.id == 29139614 &&
-      startsWith(github.ref, 'refs/heads/renovate/')
+      startsWith(github.ref, 'refs/heads/renovate/'))
     runs-on: ubuntu-latest
     timeout-minutes: 20
     concurrency:
-      group: mise-lock-${{ github.ref }}
+      group: mise-lock-${{ inputs['verify-only'] }}-${{ github.event_name }}-${{ github.ref }}
       cancel-in-progress: true
     env:
       MISE_SAFE: "1"
     steps:
-      - uses: actions/checkout@v7.0.1
+      - name: Require App credentials for updates
+        id: credentials
+        if: ${{ !inputs['verify-only'] }}
+        env:
+          APP_CLIENT_ID: ${{ inputs.app-client-id }}
+          APP_PRIVATE_KEY: ${{ secrets.app-private-key }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          if [[ -z "$APP_CLIENT_ID" || -z "$APP_PRIVATE_KEY" ]]; then
+            echo "::error::Update mode requires app-client-id and app-private-key"
+            exit 1
+          fi
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
-      - uses: jdx/mise-action@v5.1.1
+      - uses: jdx/mise-action@2d8d4cafcbd33be2ea37d2b6f5ad595363d1f1ca # v5.1.1
         with:
           install: false
           cache: false
@@ -50,6 +70,7 @@ jobs:
         id: update
         env:
           GITHUB_TOKEN: ${{ github.token }}
+          VERIFY_ONLY: ${{ inputs['verify-only'] }}
           POST_UPDATE_TASK: ${{ inputs.post-update-task }}
           POST_UPDATE_PATHS: ${{ inputs.post-update-paths }}
         shell: bash
@@ -140,21 +161,26 @@ jobs:
             echo "changed=false" >> "$GITHUB_OUTPUT"
             exit 0
           fi
+          if [[ "$VERIFY_ONLY" == true ]]; then
+            git diff --cached --stat
+            echo "::error::Dependency artifacts are out of date; regenerate and commit them"
+            exit 1
+          fi
           git -c user.name='github-actions[bot]' \
             -c user.email='41898282+github-actions[bot]@users.noreply.github.com' \
             commit -m 'chore(deps): regenerate dependency artifacts'
           echo "changed=true" >> "$GITHUB_OUTPUT"
       - name: Create repository-scoped App token
         id: app-token
-        if: steps.update.outputs.changed == 'true'
-        uses: actions/create-github-app-token@v3.2.0
+        if: ${{ !inputs['verify-only'] && steps.update.outputs.changed == 'true' }}
+        uses: actions/create-github-app-token@bcd2ba49218906704ab6c1aa796996da409d3eb1 # v3.2.0
         with:
           client-id: ${{ inputs.app-client-id }}
           private-key: ${{ secrets.app-private-key }}
           permission-contents: write
       - name: Push only if the branch has not moved
         id: push
-        if: steps.update.outputs.changed == 'true'
+        if: ${{ !inputs['verify-only'] && steps.update.outputs.changed == 'true' }}
         env:
           GH_TOKEN: ${{ steps.app-token.outputs.token }}
           BASE_SHA: ${{ steps.update.outputs.base }}

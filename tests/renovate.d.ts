@@ -1,5 +1,11 @@
 // Renovate publishes these internal JavaScript entry points without declarations.
 // Keep the test boundary typed using the configuration types it does publish.
+declare module 'renovate/dist/modules/platform/api.js' {
+  import type { Platform } from 'renovate/dist/modules/platform/types.js';
+  const api: Map<string, Platform>;
+  export default api;
+}
+
 declare module 'renovate/dist/config/presets/index.js' {
   import type { RenovateConfig } from 'renovate/dist/config/types.js';
 
@@ -60,4 +66,20 @@ declare module 'renovate/dist/modules/versioning/npm/index.js' {
   import type { VersioningApi } from 'renovate/dist/modules/versioning/types.js';
 
   export const api: VersioningApi;
+}
+
+declare module 'renovate/dist/modules/manager/npm/post-update/utils.js' {
+  export function lazyLoadPackageJson(directory: string): { getValue(): Promise<unknown> };
+  export function getPackageManagerVersion(name: string, pkg: unknown): string | null;
+}
+
+declare module 'renovate/dist/modules/manager/npm/post-update/node-version.js' {
+  import type { RenovateConfig } from 'renovate/dist/config/types.js';
+  import type { BranchUpgradeConfig } from 'renovate/dist/workers/types.js';
+  export function getNodeToolConstraint(config: RenovateConfig, upgrades: BranchUpgradeConfig[], directory: string, pkg: { getValue(): Promise<unknown> }): Promise<{ toolName: string; constraint: string | null }>;
+}
+
+declare module 'renovate/dist/workers/repository/update/branch/artifacts.js' {
+  import type { RenovateConfig } from 'renovate/dist/config/types.js';
+  export function setArtifactErrorStatus(config: RenovateConfig & { branchName: string; artifactErrors?: { fileName: string; stderr: string }[] }): Promise<void>;
 }

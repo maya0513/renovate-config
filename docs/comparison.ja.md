@@ -2,7 +2,7 @@
 
 [English](comparison.md)
 
-確認日：**2026-10-09**。公式の2列は、[`config:recommended`](https://docs.renovatebot.com/presets-config/#configrecommended)と[`config:best-practices`](https://docs.renovatebot.com/presets-config/#configbest-practices)に、継承される標準値を含めた比較です。比較の基準と本リポジトリのvalidatorは、本リポジトリのpnpmの24時間待機ルールを満たす最新安定版、Renovate **44.145.1**に揃えています。
+確認日：**2026-10-12**。公式の2列は、[`config:recommended`](https://docs.renovatebot.com/presets-config/#configrecommended)と[`config:best-practices`](https://docs.renovatebot.com/presets-config/#configbest-practices)に、継承される標準値を含めた比較です。比較の基準と本リポジトリのvalidatorは、Renovate **44.145.1**に揃えています。
 
 本リポジトリの共通設定は[`default.json`](../default.json)、jdxは[`d574ac27d15201ebe7f30af8a9ab1bb90dd23bb0`](https://github.com/jdx/renovate-config/blob/d574ac27d15201ebe7f30af8a9ab1bb90dd23bb0/default.json)時点の設定を参照しています。利用先リポジトリやBot運営側の上書き設定は比較に含めません。
 
@@ -18,7 +18,7 @@ GitHubのネイティブ自動マージには、**Allow auto-merge**を有効に
 
 | 設定 | `config:recommended` | `config:best-practices` | `local>jdx/renovate-config` | `local>maya0513/renovate-config` |
 | --- | --- | --- | --- | --- |
-| 基盤 | `config:recommended` | `config:recommended`＋7つの追加preset | `config:recommended`＋4つの追加preset | `config:recommended`＋3つの追加preset |
+| 基盤 | `config:recommended` | `config:recommended`＋7つの追加preset | `config:recommended`＋4つの追加preset | `config:recommended`＋4つの追加preset |
 | [検出するmanager](https://docs.renovatebot.com/configuration-options/#enabledmanagers) | 標準で有効なmanager | 同じ。許可リストで限定しない | 同じ。ただしGoのdirectiveは後述の例外あり | 同じ。許可リストで限定しない |
 | 除外パス | 依存物・examples・tests・fixtures | `config:recommended`と同じ | `config:recommended`＋`**/.mise/locks/**`・`**/.config/mise/locks/**` | `local>jdx/renovate-config`と同じ |
 | [曜日・タイムゾーン](https://docs.renovatebot.com/configuration-options/#schedule) | 常時・UTC | 常時・UTC | 火曜日・`America/Chicago` | 火曜日・`Asia/Tokyo` |
@@ -34,8 +34,9 @@ GitHubのネイティブ自動マージには、**Allow auto-merge**を有効に
 | major更新 | 分離・手動マージ | 分離・手動マージ | 分離。全体の`automerge: true`を継承して自動マージ対象 | 分離・手動マージ。脆弱性修正も同様 |
 | [プラットフォーム側の自動マージ](https://docs.renovatebot.com/configuration-options/#platformautomerge) | `true`。自動マージを有効にした場合に使用 | `config:recommended`と同じ | 標準の`true`を継承 | `true`。GitHubがマージする |
 | [CIチェック](https://docs.renovatebot.com/configuration-options/#ignoretests) | `ignoreTests: false` | `ignoreTests: false` | 標準の`false`を継承。ネイティブ自動マージにはプラットフォームの保護ルールが適用 | 明示的に`false`。GitHubの必須チェックがネイティブ自動マージの条件を管理 |
+| [生成結果のステータス](https://docs.renovatebot.com/configuration-options/#statuscheckwhen) | `artifactError: "failed"` | 同じ | 同じ | `artifactError: "always"`。成功・失敗とも表示 |
 | [rebase方針](https://docs.renovatebot.com/configuration-options/#rebasewhen) | `auto` | `auto` | `conflicted` | `auto` |
-| [GitHub ActionsのSHA固定](https://docs.renovatebot.com/presets-helpers/#helperspingithubactiondigests) | 強制しない | 有効 | 有効。ただし`taiki-e/install-action`は除外 | 無効。タグ・ブランチ参照を使用 |
+| [GitHub ActionsのSHA固定](https://docs.renovatebot.com/presets-helpers/#helperspingithubactiondigests) | 強制しない | 有効 | 有効。ただし`taiki-e/install-action`は除外 | 有効 |
 | [Dockerのdigest固定](https://docs.renovatebot.com/presets-docker/#dockerpindigests) | 強制しない | 有効 | 有効 | 有効 |
 | 設定移行PR | 無効 | 有効 | 有効 | 有効 |
 | [保守停止の判定ルール](https://docs.renovatebot.com/presets-abandonments/#abandonmentsrecommended) | 専用presetなし | `abandonments:recommended` | `abandonments:recommended` | `abandonments:recommended` |
@@ -59,10 +60,15 @@ GitHubのネイティブ自動マージには、**Allow auto-merge**を有効に
 | 設定 | `config:recommended` | `config:best-practices` | `local>jdx/renovate-config` | `local>maya0513/renovate-config` |
 | --- | --- | --- | --- | --- |
 | 再利用可能なlockfile workflow | presetでは提供しない | presetでは提供しない | `mise-lock.yml` | `mise-lock.yml` |
-| App認証情報 | 定義なし | 定義なし | 任意の`MISE_LOCK_APP_ID`＋`MISE_LOCK_APP_PRIVATE_KEY` Secrets。未指定時は`GITHUB_TOKEN` | 必須の`app-client-id`入力＋`app-private-key` Secret |
+| App認証情報 | 定義なし | 定義なし | 任意の`MISE_LOCK_APP_ID`＋`MISE_LOCK_APP_PRIVATE_KEY` Secrets。未指定時は`GITHUB_TOKEN` | 更新モードは`app-client-id`入力＋`app-private-key` Secretが必須。検証モードは不要 |
 | 生成物の入力 | 定義なし | 定義なし | `post_update_task`・`post_update_paths` | `post-update-task`・`post-update-paths` |
-| 自分のpushによる再生成の防止 | 定義なし | 定義なし | Mendのsender IDを確認。ブランチは呼び出し側で限定 | Mendのsender ID・pushイベント・`renovate/`ブランチを確認 |
+| 検証モード | 定義なし | 定義なし | なし | `verify-only: true`で再生成差分を検出。コミット・pushなし |
+| 自分のpushによる再生成の防止 | 定義なし | 定義なし | Mendのsender IDを確認。ブランチは呼び出し側で限定 | 更新時はMendのsender ID・pushイベント・`renovate/`ブランチを確認。検証時は制限なし |
 | ブランチの移動 | 定義なし | 定義なし | lease失敗後に取得・判定し、状況に応じて再試行・rebase | SHAを限定したleaseで移動・削除を拒否 |
 | Vite+の整合 | — | — | — | coverageを内蔵Vitestに同期 |
 
 本リポジトリ自身の[`renovate.json`](../renovate.json)だけが、npmに`rangeStrategy: "update-lockfile"`を指定しています。範囲内ではlockfileを更新し、範囲外では宣言範囲も更新します。利用先にはこのリポジトリ固有の上書きは継承されません。[range方針](https://docs.renovatebot.com/configuration-options/#rangestrategy)
+
+このリポジトリのCIは、人・Renovate・補助Appによる更新を同じ検証モードで確認します。`check`と`dependency-artifacts / mise-lock`を必須チェックとし、最新mainへの追従も必須にします。`renovate/artifacts`は通常のPRには出ないため、全PR共通の必須チェックにはしません。
+
+Node・pnpmは[`package.json`](../package.json)と[`mise.toml`](../mise.toml)で同じ完全バージョンを指定し、CIで一致を確認します。リポジトリ固有のルールでnpm・miseの更新をツール別にグループ化し、majorの手動マージ方針を維持します。利用先には継承されません。運用手順は[lockfile運用メモ](lockfile-operations.ja.md)を参照してください。

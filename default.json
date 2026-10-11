@@ -4,6 +4,7 @@
   "extends": [
     "config:recommended",
     "docker:pinDigests",
+    "helpers:pinGitHubActionDigests",
     ":configMigration",
     "abandonments:recommended"
   ],
@@ -18,6 +19,9 @@
   "automergeType": "pr",
   "platformAutomerge": true,
   "ignoreTests": false,
+  "statusCheckWhen": {
+    "artifactError": "always"
+  },
   "rebaseWhen": "auto",
   "separateMajorMinor": true,
   "gitIgnoredAuthors": [
@@ -47,12 +51,6 @@
     "groupName": null
   },
   "packageRules": [
-    {
-      "description": "Use tags or branches instead of SHA pins for GitHub Actions and reusable workflows",
-      "matchManagers": ["github-actions"],
-      "matchDepTypes": ["action", "workflow"],
-      "pinDigests": false
-    },
     {
       "description": "Automerge non-major updates using required platform checks, including 0.x releases",
       "matchUpdateTypes": [

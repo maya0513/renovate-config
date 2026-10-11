@@ -4,6 +4,10 @@
   "private": true,
   "description": "Shared Renovate preset and mise lockfile workflow",
   "type": "module",
+  "packageManager": "pnpm@12.10.1",
+  "engines": {
+    "node": "24.21.0"
+  },
   "devDependencies": {
     "@types/luxon": "^3.7.6",
     "@types/node": "^24.0.0",

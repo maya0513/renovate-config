@@ -109,7 +109,7 @@ test('dependency execution is isolated from App credentials and write permission
   assert.equal(token.with?.['permission-contents'], 'write');
   assert.equal(token.with?.repositories, '${{ github.event.repository.name }}');
   for (const job of Object.values(workflow.jobs)) for (const step of job.steps) {
-    if (step.uses) assert.match(step.uses, /^[\w-]+\/[\w-]+@v\d+\.\d+\.\d+$/);
+    if (step.uses) assert.match(step.uses, /^[\w-]+\/[\w-]+@[a-f0-9]{40}$/);
   }
 });
 
