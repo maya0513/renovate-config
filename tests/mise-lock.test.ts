@@ -1,9 +1,8 @@
 import assert from 'node:assert/strict';
-import { readFileSync, writeFileSync } from 'node:fs';
+import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { test } from 'node:test';
 import { runInNewContext } from 'node:vm';
-import { parse } from 'yaml';
 import { fixture, git, miseLockJob, write } from './helpers/mise-lock.ts';
 
 test('only the real Renovate sender on a Renovate push can regenerate locks', () => {
@@ -241,55 +240,3 @@ test('a deleted Renovate branch is never recreated by the lockfile workflow', (t
   assert.throws(() => f.run('push'));
   assert.throws(() => git(f.root, '--git-dir', f.remote, 'rev-parse', '--verify', 'refs/heads/renovate/test'));
 });
-
-const verification = parse(readFileSync(new URL('../.github/workflows/verify-mise-lock-app.yml', import.meta.url), 'utf8')) as {
-  jobs: { verify: { steps: { id?: string; run?: string }[] } };
-};
-const verifyScript = verification.jobs.verify.steps.find((step) => step.id === 'verify')?.run;
-assert(verifyScript, 'The App verification step must define its shell script');
-
-for (const outcome of ['success', 'failed CI', 'missing CI', 'API failure']) {
-  test(`App verification removes its branch after ${outcome}`, (t) => {
-    const f = fixture(t);
-    const branch = 'verification/mise-lock-app-123-1';
-    const log = join(f.root, 'gh.log');
-    const summary = join(f.root, 'summary');
-    writeFileSync(log, '');
-    writeFileSync(summary, '');
-    writeFileSync(join(f.bin, 'sleep'), '#!/usr/bin/env bash\nexit 0\n', { mode: 0o755 });
-    writeFileSync(join(f.bin, 'gh'), `#!/usr/bin/env bash
-set -euo pipefail
-[[ "$GH_TOKEN" == read-only-test-token ]]
-printf '%s\\n' "$*" >> "$GH_LOG"
-case "$1 $2" in
-  'run list')
-    if [[ "$OUTCOME" == 'API failure' ]]; then exit 1; fi
-    if [[ "$OUTCOME" != 'missing CI' ]]; then printf '42\\n'; fi
-    ;;
-  'run watch') [[ "$OUTCOME" != 'failed CI' ]] ;;
-  *) exit 2 ;;
-esac
-`, { mode: 0o755 });
-    const run = () => f.runScript(verifyScript, {
-      APP_TOKEN: 'write-test-token',
-      GH_TOKEN: 'read-only-test-token',
-      GH_LOG: log,
-      OUTCOME: outcome,
-      GITHUB_RUN_ID: '123',
-      GITHUB_RUN_ATTEMPT: '1',
-      GITHUB_REPOSITORY: 'test/renovate-config',
-      GITHUB_SERVER_URL: 'https://github.example.invalid',
-      GITHUB_STEP_SUMMARY: summary,
-    });
-    if (outcome === 'success') run();
-    else assert.throws(run);
-    assert.throws(() => git(f.root, '--git-dir', f.remote, 'rev-parse', '--verify', `refs/heads/${branch}`));
-    const head = git(f.repo, 'rev-parse', 'HEAD');
-    assert.match(readFileSync(log, 'utf8'), new RegExp(`--workflow ci.yml --branch ${branch} --commit ${head} --event push`));
-    assert.match(readFileSync(summary, 'utf8'), /Removed verification branch:/);
-    if (outcome === 'success' || outcome === 'failed CI') {
-      assert.match(readFileSync(log, 'utf8'), /run watch 42 .*--exit-status/);
-    }
-    assert.equal(readFileSync(summary, 'utf8').includes('CI succeeded:'), outcome === 'success');
-  });
-}

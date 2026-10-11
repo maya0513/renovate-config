@@ -54,7 +54,7 @@ jdxと本リポジトリの独自presetは、`config:recommended`に`docker:pinD
 
 `0.x`の行はpresetの実際の設定です。Renovateの[任意導入用のnon-major自動マージ例](https://docs.renovatebot.com/key-concepts/automerge/#automerge-non-major-updates)では1.0未満を除外しますが、jdxと本リポジトリの独自presetは対象に含めます。jdxのmajorについては、比較時点の全体設定が`automerge: true`であり、majorを無効にするルールがないことから判定しています。
 
-## 補助のmise workflow
+## 補助workflow
 
 以下はworkflowの設定で、公式の2つのpresetには含まれません。参照元：[同じリビジョンのjdx workflow](https://github.com/jdx/renovate-config/blob/d574ac27d15201ebe7f30af8a9ab1bb90dd23bb0/.github/workflows/mise-lock.yml)、[本リポジトリのworkflow](../.github/workflows/mise-lock.yml)。
 
@@ -65,5 +65,6 @@ jdxと本リポジトリの独自presetは、`config:recommended`に`docker:pinD
 | 生成物の入力 | 定義なし | 定義なし | `post_update_task`・`post_update_paths` | `post-update-task`・`post-update-paths` |
 | 自分のpushによる再生成の防止 | 定義なし | 定義なし | Mendのsender IDを確認。ブランチは呼び出し側で限定 | Mendのsender ID・pushイベント・`renovate/`ブランチを確認 |
 | ブランチの移動 | 定義なし | 定義なし | lease失敗後に取得・判定し、状況に応じて再試行・rebase | SHAを限定したleaseで移動・削除を拒否 |
+| Vite+の整合 | — | — | — | coverageを内蔵Vitestに同期 |
 
 本リポジトリ自身の[`renovate.json`](../renovate.json)だけが、npmに`rangeStrategy: "update-lockfile"`を指定しています。範囲内ではlockfileを更新し、範囲外では宣言範囲も更新します。利用先にはこのリポジトリ固有の上書きは継承されません。[range方針](https://docs.renovatebot.com/configuration-options/#rangestrategy)

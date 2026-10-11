@@ -1,0 +1,212 @@
+name: vite-plus-lock
+
+on:
+  workflow_call:
+    inputs:
+      app-client-id:
+        description: Client ID of the GitHub App installed on the caller repository
+        required: true
+        type: string
+      node-version:
+        description: Node.js major used for dependency maintenance
+        type: string
+        default: "24"
+      pnpm-version:
+        description: pnpm major used for dependency maintenance
+        type: string
+        default: "12"
+    secrets:
+      app-private-key:
+        description: Private key of the GitHub App with Contents write permission
+        required: true
+
+permissions:
+  contents: read
+
+concurrency:
+  group: vite-plus-lock-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  prepare:
+    if: >-
+      github.event_name == 'push' &&
+      github.event.sender.id == 29139614 &&
+      startsWith(github.ref, 'refs/heads/renovate/')
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    outputs:
+      changed: ${{ steps.sync.outputs.changed }}
+      base: ${{ github.sha }}
+      artifact-id: ${{ steps.upload.outputs.artifact-id }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ github.sha }}
+          persist-credentials: false
+      - uses: jdx/mise-action@2d8d4cafcbd33be2ea37d2b6f5ad595363d1f1ca # v5.1.1
+        with:
+          install: false
+          cache: false
+      - name: Install only the selected Node and pnpm majors
+        working-directory: ${{ runner.temp }}
+        env:
+          NODE_VERSION: ${{ inputs.node-version }}
+          PNPM_VERSION: ${{ inputs.pnpm-version }}
+          MISE_SAFE: "1"
+        shell: bash
+        run: |
+          set -euo pipefail
+          [[ "$NODE_VERSION" =~ ^[0-9]+$ && "$PNPM_VERSION" =~ ^[0-9]+$ ]]
+          mise install "node@$NODE_VERSION" "pnpm@$PNPM_VERSION"
+          printf '%s/bin\n' "$(mise where "node@$NODE_VERSION")" >> "$GITHUB_PATH"
+          printf '%s\n' "$(mise where "pnpm@$PNPM_VERSION")" >> "$GITHUB_PATH"
+      - name: Synchronize coverage with the locked Vite+ runner
+        id: sync
+        shell: bash
+        run: |
+          set -euo pipefail
+          node --input-type=module <<'JS'
+          import assert from 'node:assert/strict';
+          import { execFileSync, spawnSync } from 'node:child_process';
+          import { appendFileSync, copyFileSync, lstatSync, mkdirSync, readFileSync } from 'node:fs';
+          import { createRequire } from 'node:module';
+          import { join } from 'node:path';
+
+          const git = (...args) => execFileSync('git', args, { encoding: 'utf8' }).trim();
+          assert.equal(git('rev-parse', 'HEAD'), process.env.GITHUB_SHA);
+          assert.equal(git('status', '--porcelain'), '', 'Start from a clean checkout');
+          const declarations = ['package.json', 'pnpm-workspace.yaml'];
+          for (const path of [...declarations, 'pnpm-lock.yaml']) {
+            assert(lstatSync(path).isFile(), `${path} must be a regular file`);
+            assert.equal(git('ls-files', '--', path), path, `${path} must be tracked`);
+          }
+          const before = declarations.map(path => readFileSync(path, 'utf8'));
+          const project = JSON.parse(before[0]);
+          const major = project.devDependencies?.['@vitest/coverage-v8'];
+          assert.equal(typeof major, 'string', 'Declare @vitest/coverage-v8 in devDependencies');
+          assert.match(major, /^\d+$/, 'Coverage must use a major-only declaration');
+          const pnpm = (...args) => execFileSync('pnpm', [
+            ...args, '--ignore-scripts', '--ignore-pnpmfile', '--config.manage-package-manager-versions=false',
+          ], { stdio: 'inherit' });
+          const install = () => pnpm('install', '--frozen-lockfile');
+          install();
+          const require = createRequire(join(process.cwd(), 'package.json'));
+          const manifest = path => JSON.parse(readFileSync(path, 'utf8'));
+          const vpPath = require.resolve('vite-plus/package.json');
+          const vp = manifest(vpPath);
+          const bundled = vp.dependencies?.vitest;
+          assert.equal(typeof bundled, 'string', 'Vite+ must declare its bundled Vitest');
+          assert.match(bundled, /^\d+\.\d+\.\d+$/, 'Bundled Vitest must be an exact stable version');
+          assert.equal(bundled.split('.')[0], major, 'Vite+ changed its bundled Vitest major; review compatibility before updating');
+          const verify = async () => {
+            const { default: assert } = await import('node:assert/strict');
+            const { readFileSync, realpathSync } = await import('node:fs');
+            const { createRequire } = await import('node:module');
+            const { join } = await import('node:path');
+            const bundled = process.argv[1];
+            const require = createRequire(join(process.cwd(), 'package.json'));
+            const manifest = path => JSON.parse(readFileSync(path, 'utf8'));
+            const vpPath = require.resolve('vite-plus/package.json');
+            assert.equal(manifest(vpPath).version, process.argv[2], 'Synchronization must not update Vite+');
+            assert.equal(manifest(vpPath).dependencies.vitest, bundled, 'Bundled Vitest must not change during synchronization');
+            const fromRunner = createRequire(vpPath);
+            const coveragePath = require.resolve('@vitest/coverage-v8/package.json');
+            const fromCoverage = createRequire(coveragePath);
+            const runnerPath = fromRunner.resolve('vitest/package.json');
+            const versions = new Set([...readFileSync('pnpm-lock.yaml', 'utf8')
+              .matchAll(/^ {2}vitest@([^(:\n]+)/gm)].map(match => match[1]));
+            assert.deepEqual([...versions], [bundled], 'The lockfile must resolve a single Vitest version');
+            assert.equal(manifest(coveragePath).version, bundled, 'Coverage and bundled Vitest differ');
+            assert.equal(manifest(runnerPath).version, bundled, 'The runner differs from bundled Vitest');
+            assert.equal(realpathSync(fromCoverage.resolve('vitest/package.json')), realpathSync(runnerPath), 'Multiple Vitest instances are resolved');
+            assert.equal(manifest(fromRunner.resolve('vite/package.json')).name, '@voidzero-dev/vite-plus-core', 'The Vite alias does not match');
+          };
+          // pnpm switches symlinks during updates. Verify in fresh processes so
+          // Node cannot reuse a cached resolution into the old dependency graph.
+          const verifyGraph = () => spawnSync(process.execPath, [
+            '--input-type=module', '-e', `await (${verify.toString()})()`, bundled, vp.version,
+          ], { encoding: 'utf8' });
+          if (verifyGraph().status !== 0) {
+            pnpm('update', `@vitest/coverage-v8@${bundled}`, '--no-save');
+            install();
+            const result = verifyGraph();
+            assert.equal(result.status, 0, result.stderr || String(result.error));
+          }
+          assert.deepEqual(declarations.map(path => readFileSync(path, 'utf8')), before, 'Dependency declarations must not change');
+          const paths = git('status', '--porcelain', '--untracked-files=all');
+          assert(paths === '' || paths === 'M pnpm-lock.yaml', 'Only pnpm-lock.yaml may change');
+          git('diff', '--check');
+          const changed = paths !== '';
+          if (changed) {
+            const directory = join(process.env.RUNNER_TEMP, 'vite-plus-lock');
+            mkdirSync(directory, { recursive: true });
+            copyFileSync('pnpm-lock.yaml', join(directory, 'pnpm-lock.yaml'));
+          }
+          appendFileSync(process.env.GITHUB_OUTPUT, `changed=${changed}\n`);
+          console.log(`Vite+ ${vp.version}: verified single Vitest / coverage ${bundled}`);
+          JS
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        id: upload
+        if: steps.sync.outputs.changed == 'true'
+        with:
+          name: vite-plus-lock-${{ github.run_id }}-${{ github.run_attempt }}
+          path: ${{ runner.temp }}/vite-plus-lock/pnpm-lock.yaml
+          if-no-files-found: error
+          retention-days: 1
+  publish:
+    needs: prepare
+    if: needs.prepare.outputs.changed == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ needs.prepare.outputs.base }}
+          persist-credentials: false
+      - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        with:
+          artifact-ids: ${{ needs.prepare.outputs.artifact-id }}
+          path: ${{ runner.temp }}/vite-plus-lock
+      - name: Commit only the prepared lockfile
+        id: commit
+        env:
+          BASE_SHA: ${{ needs.prepare.outputs.base }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          [[ "$BASE_SHA" =~ ^[a-f0-9]{40}$ && "$(git rev-parse HEAD)" == "$BASE_SHA" ]]
+          [[ -z "$(git status --porcelain)" ]]
+          payload="$RUNNER_TEMP/vite-plus-lock/pnpm-lock.yaml"
+          [[ -f "$payload" && ! -L "$payload" && -f pnpm-lock.yaml && ! -L pnpm-lock.yaml ]]
+          cp -- "$payload" pnpm-lock.yaml
+          git diff --check
+          git add -- pnpm-lock.yaml
+          [[ "$(git diff --cached --name-only)" == pnpm-lock.yaml ]]
+          git -c core.hooksPath=/dev/null -c commit.gpgsign=false \
+            -c user.name='github-actions[bot]' \
+            -c user.email='41898282+github-actions[bot]@users.noreply.github.com' \
+            commit -m 'chore(deps): synchronize coverage with bundled Vitest'
+      - name: Create repository-scoped App token
+        id: app-token
+        uses: actions/create-github-app-token@bcd2ba49218906704ab6c1aa796996da409d3eb1 # v3.2.0
+        with:
+          client-id: ${{ inputs.app-client-id }}
+          private-key: ${{ secrets.app-private-key }}
+          owner: ${{ github.repository_owner }}
+          repositories: ${{ github.event.repository.name }}
+          permission-contents: write
+      - name: Push only if the Renovate branch has not moved
+        id: push
+        env:
+          GH_TOKEN: ${{ steps.app-token.outputs.token }}
+          BASE_SHA: ${{ needs.prepare.outputs.base }}
+          BRANCH: ${{ github.ref_name }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          [[ "$BASE_SHA" =~ ^[a-f0-9]{40}$ && "$BRANCH" == renovate/* ]]
+          git -c core.hooksPath=/dev/null -c credential.helper= \
+            -c 'credential.helper=!gh auth git-credential' \
+            push --force-with-lease="refs/heads/${BRANCH}:${BASE_SHA}" \
+            origin "HEAD:refs/heads/${BRANCH}"

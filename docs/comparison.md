@@ -54,7 +54,7 @@ Schedules limit new routine update creation. Existing branch updates and automer
 
 The `0.x` row describes actual preset behavior. Renovate's [optional non-major automerge example](https://docs.renovatebot.com/key-concepts/automerge/#automerge-non-major-updates) excludes pre-1.0 packages; the custom presets from jdx and this repository allow them. jdx's major eligibility is inferred from its global `automerge: true` and absence of a disabling major rule at the captured revision.
 
-## Supplemental mise workflow
+## Supplemental workflows
 
 These are separate workflow settings, not part of either official preset. Sources: [jdx workflow at the same revision](https://github.com/jdx/renovate-config/blob/d574ac27d15201ebe7f30af8a9ab1bb90dd23bb0/.github/workflows/mise-lock.yml), [this workflow](../.github/workflows/mise-lock.yml).
 
@@ -65,5 +65,6 @@ These are separate workflow settings, not part of either official preset. Source
 | Generated artifacts | Not defined | Not defined | `post_update_task`, `post_update_paths` | `post-update-task`, `post-update-paths` |
 | Own-push prevention | Not defined | Not defined | Mend sender ID; caller filters branches | Mend sender ID + push event + `renovate/` branch checks |
 | Branch movement | Not defined | Not defined | Lease, then fetch / inspect / retry or rebase when appropriate | Reject moved or deleted branches using an exact lease |
+| Vite+ alignment | — | — | — | Align coverage with bundled Vitest |
 
 Only this repository's own [`renovate.json`](../renovate.json) sets npm `rangeStrategy: "update-lockfile"`: in-range updates change the lockfile, and out-of-range updates change the declared range. Consumers do not inherit this repository-only override. [Range strategy](https://docs.renovatebot.com/configuration-options/#rangestrategy)
