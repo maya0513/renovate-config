@@ -200,26 +200,22 @@ test('weekly lockfile maintenance keeps platform-native automerge', async () => 
   assert.deepEqual(maintenance.schedule, ['* * * * 2']);
 });
 
-test('mise major selectors resolve locked versions and exclude other majors', async () => {
+test('repository mise tools use exact patch versions matching the lockfile', async () => {
   const extracted = await extractMise(readFileSync(new URL('../mise.toml', import.meta.url), 'utf8'), 'mise.toml');
   assert(extracted?.deps.length);
   assert.deepEqual(extracted.lockFiles, ['mise.lock']);
   for (const dependency of extracted.deps) {
-    assert(dependency.currentValue && dependency.lockedVersion && dependency.allowedVersions);
-    assert.match(dependency.currentValue, /^\d+$/);
-    const major = Number(dependency.currentValue);
-    const allowed = new RegExp(dependency.allowedVersions.slice(1, -1));
-    assert.equal(allowed.test(dependency.lockedVersion), true);
-    assert.equal(allowed.test(`${major}.999.999`), true);
-    assert.equal(allowed.test(`${major + 1}.0.0`), false);
-    assert.equal(allowed.test(`${major}0.0.0`), false);
-    assert.equal(dependency.isLockfileOnly, true);
-    assert.equal(dependency.rangeStrategy, 'update-lockfile');
+    assert(dependency.currentValue && dependency.lockedVersion);
+    assert.match(dependency.currentValue, /^\d+\.\d+\.\d+$/);
+    assert.equal(dependency.currentValue, dependency.lockedVersion);
+    assert.equal(dependency.allowedVersions, undefined);
+    assert.notEqual(dependency.isLockfileOnly, true);
   }
 });
 
 test('mise lockfile updates preserve the major requests in the source config', async () => {
-  const content = readFileSync(new URL('../mise.toml', import.meta.url), 'utf8');
+  // Consumers can still use major-only selectors with the shared preset.
+  const content = '[tools]\nnode = "24"\n';
   const extracted = await extractMise(content, 'mise.toml');
   const node = extracted?.deps.find((dependency) => dependency.depName === 'node');
   assert(node?.lockedVersion);
