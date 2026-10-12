@@ -1,4 +1,4 @@
-pmOnFail: ignore
+pmOnFail: error
 
 allowBuilds:
   core-js-pure: false

@@ -1,0 +1,25 @@
+{
+  "$schema": "https://docs.renovatebot.com/renovate-schema.json",
+  "description": "Group mise-managed Node and pnpm declarations; requires the shared dependency-artifacts workflow",
+  "mise": {
+    "skipArtifactsUpdate": true,
+    "lockFileMaintenance": {
+      "enabled": false
+    }
+  },
+  "packageRules": [
+    {
+      "description": "Update Node declarations together; the companion workflow regenerates mise locks",
+      "matchManagers": ["npm", "mise"],
+      "matchDepNames": ["node"],
+      "groupName": "Node.js runtime",
+      "skipArtifactsUpdate": true
+    },
+    {
+      "description": "Update pnpm declarations together while retaining native npm artifact generation",
+      "matchManagers": ["npm", "mise"],
+      "matchDepNames": ["pnpm"],
+      "groupName": "pnpm package manager"
+    }
+  ]
+}

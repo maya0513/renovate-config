@@ -1,23 +1,7 @@
 {
   "$schema": "https://docs.renovatebot.com/renovate-schema.json",
-  "extends": ["local>maya0513/renovate-config"],
-  "packageRules": [
-    {
-      "description": "Update npm lockfiles within declared ranges and replace ranges for out-of-range updates",
-      "matchManagers": ["npm"],
-      "rangeStrategy": "update-lockfile"
-    },
-    {
-      "description": "Keep Node versions in package.json and mise synchronized",
-      "matchManagers": ["npm", "mise"],
-      "matchDepNames": ["node"],
-      "groupName": "Node.js runtime"
-    },
-    {
-      "description": "Keep pnpm versions in package.json and mise synchronized",
-      "matchManagers": ["npm", "mise"],
-      "matchDepNames": ["pnpm"],
-      "groupName": "pnpm package manager"
-    }
+  "extends": [
+    "local>maya0513/renovate-config",
+    "local>maya0513/renovate-config//presets/mise-pnpm"
   ]
 }

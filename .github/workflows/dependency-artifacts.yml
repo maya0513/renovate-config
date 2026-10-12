@@ -374,8 +374,11 @@ jobs:
             const syncDeclarations = process.env.SYNC_DECLARATIONS === 'true';
             assert.equal(typeof coverage, 'string', 'Declare @vitest/coverage-v8 in devDependencies');
             assert.match(coverage, syncDeclarations ? /^\d+(?:\.\d+\.\d+)?$/ : /^\d+$/, 'Coverage must use a major-only declaration, or an exact stable version with sync-declarations');
+            // mise must provide the declared executable. Standalone maintenance
+            // deliberately uses the caller's node-version / pnpm-version inputs.
             const pnpm = (...args) => execFileSync('pnpm', [
-              ...args, '--ignore-scripts', '--ignore-pnpmfile', '--config.manage-package-manager-versions=false',
+              ...args, '--ignore-scripts', '--ignore-pnpmfile',
+              `--pm-on-fail=${process.env.MISE_ENABLED === 'true' ? 'error' : 'ignore'}`,
             ], { stdio: 'inherit' });
             pnpm('install', '--frozen-lockfile');
             const vp = manifest(packagePath('vite-plus'));

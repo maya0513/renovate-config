@@ -292,7 +292,31 @@ test('repository tool updates group npm and mise per tool and preserve manual ma
     assert.equal(pnpm[0]?.branchName, pnpm[1]?.branchName);
     assert.notEqual(node[0]?.branchName, pnpm[0]?.branchName);
     assert(result.every(update => update.automerge === (type === 'minor')));
+    assert(node.every(update => update.skipArtifactsUpdate === true));
+    assert.equal(pnpm.find(update => update.manager === 'npm')?.skipArtifactsUpdate, false);
+    assert.equal(pnpm.find(update => update.manager === 'mise')?.skipArtifactsUpdate, true);
   }
+});
+
+test('mise-pnpm is opt-in and leaves npm artifact generation and maintenance enabled', async () => {
+  const optConfig = mergeChildConfig(config, optional('mise-pnpm'));
+  for (const [manager, datasource] of [['npm', 'npm'], ['mise', 'github-releases']] as const) {
+    const normal = await flattenUpdates(config, { [manager]: [{ packageFile: 'fixture', deps: [dep('pnpm', 'patch', '12.0.0', '12.0.1', datasource)] }] });
+    assert.equal(normal.find(update => !update.isLockFileMaintenance)?.skipArtifactsUpdate, false);
+    assert(normal.some(update => update.isLockFileMaintenance));
+    const selected = await flattenUpdates(optConfig, { [manager]: [{ packageFile: 'fixture', deps: [dep('unrelated', 'patch', '1.0.0', '1.0.1', datasource)] }] });
+    assert.equal(selected.find(update => !update.isLockFileMaintenance)?.skipArtifactsUpdate, manager === 'mise');
+    assert.equal(selected.some(update => update.isLockFileMaintenance), manager === 'npm');
+  }
+});
+
+test('local optional presets compose without bundling Vite+ into mise-pnpm', async () => {
+  const reference = 'local>maya0513/renovate-config';
+  const miseOnly = await resolveLocalConfig(preset, { extends: [reference, `${reference}//presets/mise-pnpm`] });
+  const both = await resolveLocalConfig(preset, { extends: [reference, `${reference}//presets/mise-pnpm`, `${reference}//presets/vite-plus`] });
+  const dependencies = [dep('vite-plus'), dep('vitest'), dep('@vitest/coverage-v8'), dep('@voidzero-dev/vite-plus-core'), dep('other')];
+  assert.equal((await updates('npm', dependencies, miseOnly)).length, 5);
+  assert.deepEqual((await updates('npm', dependencies, both)).map(update => update.depName).sort(), ['other', 'vite-plus']);
 });
 
 test('repository mise tools use exact patch versions matching the lockfile', async () => {
@@ -343,12 +367,10 @@ test('npm caret ranges keep in-range declarations and propose manual major updat
   assert.equal(npmVersioning.matches('24.0.0', nodeTypes.currentValue), true);
   assert.equal(npmVersioning.matches('26.0.0', nodeTypes.currentValue), false);
 
-  const ownConfig: RenovateConfig = JSON.parse(readFileSync(new URL('../renovate.json', import.meta.url), 'utf8'));
-  const ownResolved = mergeChildConfig(config, await resolveLocalConfig(preset, ownConfig));
   const [minor, major] = await updates('npm', [
     { ...dep('example-range', 'minor', '1.0.0', '1.1.0'), currentValue: '^1.0.0' },
     { ...dep('example-range', 'major', '1.0.0', '2.0.0'), currentValue: '^1.0.0' },
-  ], ownResolved);
+  ]);
   assert(minor?.rangeStrategy && major?.rangeStrategy);
   assert.equal(minor.rangeStrategy, 'update-lockfile');
   assert.equal(major.rangeStrategy, 'update-lockfile');
@@ -406,8 +428,20 @@ test('GitHub Actions and reusable workflows are eligible for SHA pinning', async
   for (const update of result) {
     const shared = update.depName === 'maya0513/renovate-config' && update.depType === 'workflow';
     assert.equal(update.pinDigests, true);
-    assert.equal(update.automerge, true);
+    assert.equal(update.automerge, !shared);
+    assert.equal(update.minimumReleaseAge, shared ? null : '7 days');
     if (shared) assert.equal(update.currentValue, 'main');
+  }
+});
+
+test('runner changes require review for minor and major updates', async () => {
+  const extracted = await extractActions('jobs:\n  test:\n    runs-on: ubuntu-24.04\n    steps:\n      - uses: actions/checkout@v7\n', '.github/workflows/runner.yml');
+  const runner = extracted?.deps.find(dependency => dependency.datasource === 'github-runners');
+  assert(runner);
+  for (const type of ['minor', 'major'] as const) {
+    const [update] = await updates('github-actions', [{ ...runner, updates: dep(runner.depName!, type).updates }]);
+    assert.equal(update?.automerge, false);
+    assert.equal(update?.minimumReleaseAge, '7 days');
   }
 });
 
