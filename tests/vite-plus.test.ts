@@ -29,7 +29,8 @@ test('legacy major declarations repair only the lockfile without running package
   assert.equal(git(f.repo, 'diff', '--name-only', f.base, 'HEAD'), 'pnpm-lock.yaml');
   assert.match(f.calls(), /"update","@vitest\/coverage-v8@5.0.1","--no-save"/);
   for (const call of f.calls().trim().split('\n').map(line => JSON.parse(line) as string[])) {
-    for (const flag of ['--ignore-scripts', '--ignore-pnpmfile', '--config.manage-package-manager-versions=false']) assert(call.includes(flag));
+    for (const flag of ['--ignore-scripts', '--ignore-pnpmfile', '--pm-on-fail=ignore']) assert(call.includes(flag));
+    assert(!call.some(flag => flag.includes('manage-package-manager-versions')));
   }
 });
 test('aligned verification needs no credentials and creates no payload, commit or push', t => {
@@ -71,6 +72,8 @@ test('combined mise and Vite+ changes produce one commit and the App push can be
   f.run('push');
   f.update({ VERIFY_ONLY: 'true', NO_CHANGE: '1' });
   assert.equal(f.outputs().changed, 'false');
+  const calls = f.calls().trim().split('\n').map(line => JSON.parse(line) as string[]);
+  assert(calls.every(call => call.includes('--pm-on-fail=error')));
 });
 for (const options of [{ duplicate: true, aligned: true }, { instance: true, aligned: true }, { symlink: true }]) {
   test(`repairs and verifies fresh graph resolutions ${JSON.stringify(options)}`, t => {

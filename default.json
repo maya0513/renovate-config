@@ -66,6 +66,24 @@
       "description": "Require manual review for major updates, including vulnerability fixes",
       "matchUpdateTypes": ["major"],
       "automerge": false
+    },
+    {
+      "description": "Keep npm declaration ranges for in-range updates and replace them for out-of-range updates",
+      "matchManagers": ["npm"],
+      "rangeStrategy": "update-lockfile"
+    },
+    {
+      "description": "Review changes to CI runner environments manually",
+      "matchDatasources": ["github-runners"],
+      "automerge": false
+    },
+    {
+      "description": "Review shared dependency workflow revisions manually without release-age delays",
+      "matchManagers": ["github-actions"],
+      "matchDepTypes": ["workflow"],
+      "matchPackageNames": ["maya0513/renovate-config"],
+      "automerge": false,
+      "minimumReleaseAge": null
     }
   ]
 }

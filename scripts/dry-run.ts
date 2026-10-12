@@ -23,7 +23,10 @@ export async function resolveLocalConfig(preset: RenovateConfig, repositoryConfi
   let config: RenovateConfig = {};
   for (const reference of references) {
     if (repositoryConfig.ignorePresets?.includes(reference)) continue;
-    const layer = reference === 'local>maya0513/renovate-config' ? preset : { extends: [reference] };
+    const localOptional = ['mise-pnpm', 'vite-plus'].find(name => reference === `local>maya0513/renovate-config//presets/${name}`);
+    const layer = reference === 'local>maya0513/renovate-config' ? preset
+      : localOptional ? JSON.parse(readFileSync(join(root, 'presets', `${localOptional}.json`), 'utf8')) as RenovateConfig
+      : { extends: [reference] };
     const { config: resolved } = await resolveConfigPresets({ ...layer, ignorePresets: repositoryConfig.ignorePresets });
     config = mergeChildConfig(config, resolved);
   }

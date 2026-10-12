@@ -22,7 +22,7 @@ Vite+単独で使う場合は[`vite-plus.yml`](../.github/workflows/vite-plus.ym
 | miseの実行環境 | CIや開発環境で使うOS・CPUのlock情報を含めます。環境別の`mise.*.lock`も、その環境を選んで生成・検証してください。[プラットフォームの指定](https://mise.jdx.dev/dev-tools/mise-lock.html#preparing-platform-entries) |
 | 追加の生成物 | `post-update-task`と`post-update-paths`を更新・検証の両方で同じように指定します。指定漏れは古い生成物の残存につながります。タスクはリポジトリのコードを実行するため、内容を確認し、対象パスは必要最小限にします。[workflow](../.github/workflows/dependency-artifacts.yml) |
 | Vite+を使う場合 | 既定ではmajorのみのcoverage宣言を維持し、lockfileのcoverageを内蔵Vitestに揃えます。coverageのexact宣言・Vitest override・Vite core aliasも同期する場合は`sync-declarations: true`にします。内蔵Vitestのmajor変更は互換性を確認してから対応します。[workflow](../.github/workflows/vite-plus.yml) |
-| npmの更新方針 | このリポジトリ自身の`rangeStrategy: "update-lockfile"`は利用先には継承されません。利用先でも宣言範囲を維持してlockfileを更新したい場合は、利用先で明示します。[リポジトリ固有の設定](../renovate.json) |
+| npmの更新方針 | 共通defaultの`rangeStrategy: "update-lockfile"`を利用先にも適用します。範囲内では宣言を維持し、範囲外では宣言範囲も更新します。[共通設定](../default.json) |
 
 ## 自動マージ前の確認
 
@@ -40,18 +40,68 @@ Vite+単独で使う場合は[`vite-plus.yml`](../.github/workflows/vite-plus.ym
 
 `post-update-paths`は改行区切りのリポジトリ相対パスです。ファイル名は文字どおりに扱い、globとして展開しません。ディレクトリを指定すると配下の追加・変更・削除も対象になります。リポジトリ全体を示す`.`、親ディレクトリ、絶対パス、`.git`は指定できません。公開する生成物は通常ファイルに限ります。
 
-このリポジトリでは、`package.json`の`engines.node: "24.21.0"`・`packageManager: "pnpm@12.10.1"`と、`mise.toml`のNode・pnpmを一致させます。Renovateはnpmの生成処理で前者を参照し、ツール別の同じPRで両ファイルを更新します。手動更新でも両方を変えてください。一致はCIで検証し、major更新は手動マージのままです。この同期設定は利用先には継承されません。
+このリポジトリでは、`package.json`の`engines.node: "24.21.0"`・`packageManager: "pnpm@12.10.1"`と、`mise.toml`のNode・pnpmを一致させます。`mise-pnpm` presetがnpm・miseの宣言をツール別の同じPRにまとめます。利用先も同じ完全バージョンを両方に宣言し、手動更新では両方を変えてください。一致は各利用先のCIで検証し、major更新は手動マージのままです。
 
 共通presetは`statusCheckWhen.artifactError: "failed"`とし、生成エラーがある場合に`renovate/artifacts`を表示します。全PR共通の必須チェックにはせず、上記のCI検証を必須にします。
 
+## mise・pnpmの選択式preset
+
+mise管理のNode・pnpmと共有workflowを併用する場合は、`local>maya0513/renovate-config//presets/mise-pnpm`を追加します。追跡済みmise lockfileと、更新・検証の両callerを先に用意してください。presetはmiseのartifact生成・maintenanceとNode更新時のartifact生成を止めます。pnpm更新時のnpm artifact生成とnpmのmaintenanceはRenovateに残します。workflowを使わないリポジトリではこのpresetを選びません。
+
+mise管理構成では`pnpm-workspace.yaml`に`pmOnFail: error`を指定し、実行ファイルと`packageManager`の不一致を失敗させます。共有workflowも同じオプションを明示し、別バージョンの自動取得を避けます。Vite+単独利用では、`node-version`・`pnpm-version`入力による独立した生成用バージョンを維持するため`--pm-on-fail=ignore`を使います。[pnpmの仕様](https://pnpm.io/settings/cli#pmonfail)
+
+`ignore`から`error`へ移行する場合は、宣言に一致するpnpmでlockfileを再生成してください。pnpm自身の依存を記録する別の文書が追加される場合があります。新しいpnpm宣言に古い`packageManagerDependencies`が残ると初回frozen installが失敗するため、pnpm更新のnpm artifact生成を止めないでください。共有workflowはこの不整合の修復を行いません。
+
+## App認証とcallerの例
+
+新規導入ではRepository variableの`DEPENDENCY_ARTIFACTS_APP_CLIENT_ID`とSecretの`DEPENDENCY_ARTIFACTS_APP_PRIVATE_KEY`を推奨します。既存のApp・installationと既存名の認証情報は再利用でき、利用先ごとの新しいApp作成やSecret改名は不要です。更新側だけが認証情報を受け取り、対象リポジトリへのContents write権限で公開します。PR作成権限はこのworkflowには不要です。検証側にはApp認証情報を渡しません。
+
+以下はmiseのツールがNode・pnpmだけの利用先の例です。共通変更がmainへ入った後、両callerの`<mainの40桁SHA>`を同じSHAに置き換えます。
+
+更新caller:
+
+```yaml
+name: Synchronize dependency artifacts
+on:
+  push:
+    branches: ["renovate/**"]
+permissions:
+  contents: read
+jobs:
+  dependency-artifacts:
+    uses: maya0513/renovate-config/.github/workflows/dependency-artifacts.yml@<mainの40桁SHA> # main
+    with:
+      verify-only: false
+      lock-groups: >-
+        [{"lockfile":"mise.lock","tools":["node","pnpm"],"platforms":["linux-x64","linux-arm64"],"verify":"regenerate"}]
+      app-client-id: ${{ vars.DEPENDENCY_ARTIFACTS_APP_CLIENT_ID }}
+    secrets:
+      app-private-key: ${{ secrets.DEPENDENCY_ARTIFACTS_APP_PRIVATE_KEY }}
+```
+
+検証caller（既存CIへの追加例）:
+
+```yaml
+jobs:
+  dependency-artifacts:
+    uses: maya0513/renovate-config/.github/workflows/dependency-artifacts.yml@<mainの40桁SHA> # main
+    with:
+      verify-only: true
+      lock-groups: >-
+        [{"lockfile":"mise.lock","tools":["node","pnpm"],"platforms":["linux-x64","linux-arm64"],"verify":"regenerate"}]
+```
+
+検証callerには`contents: read`を設定し、人・Renovate・AppによるPRの最新コミットすべてで実行します。実際のチェック名を必須にしてください。両callerで同じ`lock-groups`・生成タスク・生成パスを使います。Vite+も使う場合は、両方に`sync-vite-plus: true`・`sync-declarations: true`を追加し、以下のpresetも選択します。
+
 ## Vite+とツール別の生成・検証
 
-Vite+を使う利用先では、`presets/`内の選択式presetを追加します。共通defaultには含まれません。
+Vite+を使う利用先では、`presets/`内の選択式presetを追加します。共通defaultには含まれません。以下はmiseとVite+を併用する例です。Vite+単独利用では`mise-pnpm`の参照を省きます。
 
 ```json
 {
   "extends": [
     "local>maya0513/renovate-config",
+    "local>maya0513/renovate-config//presets/mise-pnpm",
     "local>maya0513/renovate-config//presets/vite-plus"
   ]
 }
@@ -89,7 +139,7 @@ jobs:
 
 この例は3ツールの構成です。実際のツール一覧へ合わせ、更新workflowにも同じ入力を指定します。更新側は`verify-only: false`とし、`app-client-id`・`app-private-key`を渡してください。統合時のNode・pnpmは利用先のmise lockfileから使います。Vite+単独のworkflowでは`node-version`・`pnpm-version`にmajorまたはexactを指定できます。
 
-Renovate自身もmiseを再生成します。Linux専用Condaがある場合は、利用先のmise設定で`lockfile_platforms = ["linux-x64", "linux-arm64"]`を指定し、補助workflowの明示的なgroupsで他ツールの対象OSを補います。`os = ["linux"]`だけではlock生成の対象OSを制限できないケースがあるため、実際のRenovate PRでも確認してください。
+`mise-pnpm`を選択した構成では、miseの再生成は共有workflowが担当します。選択していなければRenovate自身も再生成します。Linux専用Condaがある場合は、利用先のmise設定で`lockfile_platforms = ["linux-x64", "linux-arm64"]`を指定し、補助workflowの明示的なgroupsで他ツールの対象OSを補います。`os = ["linux"]`だけではlock生成の対象OSを制限できないケースがあるため、実際の更新でも確認してください。
 
 Vite+同期には、ルートの`package.json`・`pnpm-workspace.yaml`・`pnpm-lock.yaml`が通常ファイルとしてGit管理されている必要があります。`@vitest/coverage-v8`は`devDependencies`にmajorのみで宣言し、`sync-declarations: true`の場合はexactの安定版も指定できます。同期は選択済みVite+を使い、coverage宣言と内蔵Vitestのmajorが異なる場合は失敗します。
 

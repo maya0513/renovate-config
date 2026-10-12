@@ -42,9 +42,9 @@ GitHubのネイティブ自動マージには、**Allow auto-merge**を有効に
 | [保守停止の判定ルール](https://docs.renovatebot.com/presets-abandonments/#abandonmentsrecommended) | 専用presetなし | `abandonments:recommended` | `abandonments:recommended` | `abandonments:recommended` |
 | [lockfile maintenance](https://docs.renovatebot.com/configuration-options/#lockfilemaintenance) | 無効 | UTCの月曜日04:00より前・手動マージ | Chicago時間の月曜日04:00より前・`7 days`・自動マージ | 日本時間の火曜日・自動マージ |
 | [脆弱性修正](https://docs.renovatebot.com/configuration-options/#vulnerabilityalerts) | 曜日・待機の制限なし。手動マージ | `config:recommended`と同じ | 同じ例外。majorも全体の自動マージ対象 | 同じ例外。non-majorは自動、majorは手動 |
-| パッケージ別の例外 | コミュニティpresetのルール | コミュニティのルール＋後述のnpm待機の例外 | 指定されたjdx cratesは曜日・待機を免除。指定されたjdxツールは待機を免除 | 所有者固有の例外なし |
+| パッケージ別の例外 | コミュニティpresetのルール | コミュニティのルール＋後述のnpm待機の例外 | 指定されたjdx cratesは曜日・待機を免除。指定されたjdxツールは待機を免除 | runnerと本リポジトリの再利用workflow更新は手動レビュー。後者は待機免除 |
 | Go固有の上書き | 追加なし | 追加なし | `go` directiveの更新を無効化し、`gomodTidy`を有効化 | 追加なし |
-| npmのrange方針 | managerの標準値（`auto`） | 開発用依存は`pin`、それ以外はmanagerの標準値 | managerの標準値（`auto`） | 共通presetはmanagerの標準値（`auto`） |
+| npmのrange方針 | managerの標準値（`auto`） | 開発用依存は`pin`、それ以外はmanagerの標準値 | managerの標準値（`auto`） | `update-lockfile` |
 | 補助コミットの無視対象作者 | 追加なし | 追加なし | `github-actions[bot]`のメールアドレス | `github-actions[bot]`のメールアドレス |
 
 `config:best-practices`のnpm待機ルールは、lockfile maintenance・置き換え・pin・リリースタイムスタンプを持たない更新種別を対象外にします。開発用依存の完全固定は`devDependencies`・`dev-dependencies`・`dev`に適用されます。[npm待機のルール](https://docs.renovatebot.com/presets-security/#securityminimumreleaseagenpm)、[開発用依存の固定](https://docs.renovatebot.com/presets-default/#pindevdependencies)
@@ -75,8 +75,8 @@ Vite+同期は既定でcoverageのmajorのみの宣言を維持し、`pnpm-lock.
 
 workflowはmainの40桁SHAで固定し、`# main`を添えて参照します。リリースタグは設けません。統合呼び出し例とlocked検証の範囲は[lockfile運用メモ](lockfile-operations.ja.md)を参照してください。
 
-本リポジトリ自身の[`renovate.json`](../renovate.json)だけが、npmに`rangeStrategy: "update-lockfile"`を指定しています。範囲内ではlockfileを更新し、範囲外では宣言範囲も更新します。利用先にはこのリポジトリ固有の上書きは継承されません。[range方針](https://docs.renovatebot.com/configuration-options/#rangestrategy)
+共通defaultはnpmに`rangeStrategy: "update-lockfile"`を指定します。範囲内ではlockfileを更新し、範囲外では宣言範囲も更新します。利用先にも継承されます。[range方針](https://docs.renovatebot.com/configuration-options/#rangestrategy)
 
 このリポジトリのCIは、人・Renovate・補助Appによる更新を同じ検証モードで確認します。`check`と`dependency-artifacts / prepare`を必須チェックとし、最新mainへの追従も必須にします。`renovate/artifacts`は通常のPRには出ないため、全PR共通の必須チェックにはしません。
 
-Node・pnpmは[`package.json`](../package.json)と[`mise.toml`](../mise.toml)で同じ完全バージョンを指定し、CIで一致を確認します。リポジトリ固有のルールでnpm・miseの更新をツール別にグループ化し、majorの手動マージ方針を維持します。利用先には継承されません。運用手順は[lockfile運用メモ](lockfile-operations.ja.md)を参照してください。
+Node・pnpmは[`package.json`](../package.json)と[`mise.toml`](../mise.toml)で同じ完全バージョンを指定し、CIで一致を確認します。選択式の[`mise-pnpm`](../presets/mise-pnpm.json)がnpm・miseの更新をツール別にグループ化します。共有workflowの併用を前提にmiseのartifact生成・maintenanceとNode更新時のartifact生成を止め、pnpm更新時のnpm artifact生成はRenovateに残します。Vite+とは独立して選択でき、majorの手動マージ方針を維持します。共通化の判断と移行は[プリセットの境界](preset-boundaries.ja.md)、認証・pnpm設定・caller例は[lockfile運用メモ](lockfile-operations.ja.md)を参照してください。
