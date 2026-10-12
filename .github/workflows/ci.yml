@@ -14,7 +14,7 @@ concurrency:
 
 jobs:
   dependency-artifacts:
-    uses: $/.github/workflows/mise-lock.yml
+    uses: $/.github/workflows/dependency-artifacts.yml
     with:
       verify-only: true
   check:

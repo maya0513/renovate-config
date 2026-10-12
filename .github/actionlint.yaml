@@ -3,9 +3,13 @@ paths:
     ignore:
       # GitHub supports this exact-commit reference; actionlint does not yet.
       # Remove after https://github.com/rhysd/actionlint/issues/711 is fixed.
-      - '^reusable workflow call "\$/\.github/workflows/mise-lock\.yml" at "uses" is not following the format '
-  .github/workflows/update-mise-lock.yml:
+      - '^reusable workflow call "\$/\.github/workflows/dependency-artifacts\.yml" at "uses" is not following the format '
+  .github/workflows/update.yml:
     ignore:
       # GitHub supports this exact-commit reference; actionlint does not yet.
       # Remove after https://github.com/rhysd/actionlint/issues/711 is fixed.
-      - '^reusable workflow call "\$/\.github/workflows/mise-lock\.yml" at "uses" is not following the format '
+      - '^reusable workflow call "\$/\.github/workflows/dependency-artifacts\.yml" at "uses" is not following the format '
+  .github/workflows/vite-plus.yml:
+    ignore:
+      # GitHub exact-commit self-reference; see actionlint issue 711 above.
+      - '^reusable workflow call "\$/\.github/workflows/dependency-artifacts\.yml" at "uses" is not following the format '

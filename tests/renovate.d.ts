@@ -56,6 +56,11 @@ declare module 'renovate/dist/modules/manager/npm/extract/index.js' {
   export function extractPackageFile(content: string, packageFile: string, config: ExtractConfig): Promise<PackageFileContent | null>;
 }
 
+declare module 'renovate/dist/modules/manager/npm/extract/pnpm.js' {
+  import type { PackageFileContent } from 'renovate/dist/modules/manager/types.js';
+  export function extractPnpmWorkspaceFile(content: unknown, packageFile: string): Promise<PackageFileContent | null>;
+}
+
 declare module 'renovate/dist/modules/manager/github-actions/extract.js' {
   import type { ExtractConfig, PackageFileContent } from 'renovate/dist/modules/manager/types.js';
 

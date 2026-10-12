@@ -1,4 +1,4 @@
-name: Update mise lockfiles
+name: Update dependency artifacts
 
 on:
   push:
@@ -8,8 +8,8 @@ permissions:
   contents: read
 
 jobs:
-  mise-lock:
-    uses: $/.github/workflows/mise-lock.yml
+  update:
+    uses: $/.github/workflows/dependency-artifacts.yml
     with:
       app-client-id: ${{ vars.MISE_LOCK_APP_CLIENT_ID }}
     secrets:

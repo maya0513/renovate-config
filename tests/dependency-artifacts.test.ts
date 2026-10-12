@@ -3,11 +3,10 @@ import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { test } from 'node:test';
 import { runInNewContext } from 'node:vm';
-import { parse } from 'yaml';
-import { fixture, git, miseLockJob, write } from './helpers/mise-lock.ts';
+import { fixture, git, prepareJob, dependencyArtifactsWorkflow, publishJob, readWorkflow, write } from './helpers/dependency-artifacts.ts';
 
 test('only the real Renovate sender on a Renovate push can regenerate locks', () => {
-  const allowed = (eventName: string, senderId: number, ref: string, login = 'renovate[bot]', verifyOnly = false): boolean => runInNewContext(miseLockJob.if, {
+  const allowed = (eventName: string, senderId: number, ref: string, login = 'renovate[bot]', verifyOnly = false): boolean => runInNewContext(prepareJob.if, {
     inputs: { 'verify-only': verifyOnly },
     github: { event_name: eventName, event: { sender: { id: senderId, login } }, ref },
     startsWith: (value: string, prefix: string) => value.startsWith(prefix),
@@ -24,45 +23,42 @@ test('only the real Renovate sender on a Renovate push can regenerate locks', ()
 });
 
 test('verification is called on every CI event without App credentials and cannot push', () => {
-  const ci = parse(readFileSync(new URL('../.github/workflows/ci.yml', import.meta.url), 'utf8'));
+  const ci = readWorkflow('ci');
   assert.deepEqual(Object.keys(ci.on).sort(), ['pull_request', 'push', 'workflow_dispatch']);
   const verification = ci.jobs['dependency-artifacts'];
-  assert.equal(verification.uses, '$/.github/workflows/mise-lock.yml');
+  assert.equal(verification.uses, '$/.github/workflows/dependency-artifacts.yml');
   assert.deepEqual(verification.with, { 'verify-only': true });
   assert.equal(verification.if, undefined);
   assert.equal(verification.secrets, undefined);
-  const workflow = parse(readFileSync(new URL('../.github/workflows/mise-lock.yml', import.meta.url), 'utf8'));
+  const workflow = dependencyArtifactsWorkflow;
   assert.equal(workflow.on.workflow_call.inputs['verify-only'].default, false);
   assert.equal(workflow.on.workflow_call.inputs['app-client-id'].required, false);
   assert.equal(workflow.on.workflow_call.secrets['app-private-key'].required, false);
   assert.deepEqual(workflow.permissions, { contents: 'read' });
-  for (const id of ['credentials', 'app-token', 'push']) {
-    const step = miseLockJob.steps.find(step => step.id === id)!;
-    const expression = step.if!.replace(/^\$\{\{\s*|\s*\}\}$/g, '');
-    for (const verifyOnly of [false, true]) {
-      assert.equal(runInNewContext(expression, {
-        inputs: { 'verify-only': verifyOnly }, steps: { update: { outputs: { changed: 'true' } } },
-      }), !verifyOnly, `${id}: verify-only=${verifyOnly}`);
-    }
+  assert.equal(workflow.jobs.publish.needs, 'prepare');
+  assert(!JSON.stringify(prepareJob).includes('app-private-key'));
+  assert(!JSON.stringify(prepareJob).includes('permission-contents'));
+  const expression = publishJob.if.replace(/^\$\{\{\s*|\s*\}\}$/g, '');
+  for (const verifyOnly of [false, true]) {
+    assert.equal(runInNewContext(expression, { inputs: { 'verify-only': verifyOnly } }), !verifyOnly);
   }
 });
 
-test('update mode rejects either missing App credential before regeneration', t => {
+test('publication requires both App credentials and performs no dependency execution', t => {
   const f = fixture(t);
   for (const [client, key] of [['', ''], ['client', ''], ['', 'private-key']]) {
     assert.throws(() => f.run('credentials', { APP_CLIENT_ID: client, APP_PRIVATE_KEY: key }));
   }
   f.run('credentials', { APP_CLIENT_ID: 'client', APP_PRIVATE_KEY: 'private-key' });
   assert.equal(readFileSync(f.log, 'utf8'), '');
-  assert.equal(git(f.repo, 'rev-parse', 'HEAD'), f.base);
+  f.assertUnpublished();
 });
 
 test('unchanged verification succeeds without committing or changing the remote', t => {
   const f = fixture(t);
   f.update({ VERIFY_ONLY: 'true', NO_CHANGE: '1', TASK_NO_CHANGE: '1', POST_UPDATE_TASK: 'generate', POST_UPDATE_PATHS: 'generated docs' });
   assert.equal(f.outputs().changed, 'false');
-  assert.equal(git(f.repo, 'rev-parse', 'HEAD'), f.base);
-  assert.equal(git(f.root, '--git-dir', f.remote, 'rev-parse', 'refs/heads/renovate/test'), f.base);
+  f.assertUnpublished();
   assert.equal(git(f.repo, 'status', '--porcelain'), '');
   assert.match(readFileSync(f.log, 'utf8'), /\|0\|run -- generate/);
 });
@@ -82,8 +78,7 @@ for (const [description, files, overrides] of [
       return true;
     });
     assert.notEqual(f.outputs().changed, 'true');
-    assert.equal(git(f.repo, 'rev-parse', 'HEAD'), f.base);
-    assert.equal(git(f.root, '--git-dir', f.remote, 'rev-parse', 'refs/heads/renovate/test'), f.base);
+    f.assertUnpublished();
     if (description !== 'changed lockfile') assert(!git(f.repo, 'diff', '--cached', '--name-only').split('\n').includes('mise.lock'));
     assert(!git(f.repo, 'diff', '--cached', '--name-only').includes('unrelated.txt'));
   });
@@ -92,7 +87,7 @@ for (const [description, files, overrides] of [
 test('a repository without tracked lockfiles needs no commit or mise command', (t) => {
   const f = fixture(t, {});
   f.update({ POST_UPDATE_TASK: 'generate', POST_UPDATE_PATHS: 'generated docs' });
-  assert.equal(git(f.repo, 'rev-parse', 'HEAD'), f.base);
+  f.assertUnpublished();
   assert.equal(f.outputs().changed, 'false');
   assert.equal(readFileSync(f.log, 'utf8'), '');
 });
@@ -100,7 +95,7 @@ test('a repository without tracked lockfiles needs no commit or mise command', (
 test('unchanged lockfiles do not create an empty commit', (t) => {
   const f = fixture(t);
   f.update({ NO_CHANGE: '1' });
-  assert.equal(git(f.repo, 'rev-parse', 'HEAD'), f.base);
+  f.assertUnpublished();
   assert.equal(f.outputs().changed, 'false');
 });
 
@@ -110,7 +105,7 @@ test('untracked lockfiles are not regenerated and do not enable the post-update 
   f.update({ POST_UPDATE_TASK: 'generate' });
   assert.equal(readFileSync(f.log, 'utf8'), '');
   assert.equal(readFileSync(join(f.repo, 'mise.lock'), 'utf8'), 'untracked lock\n');
-  assert.equal(git(f.repo, 'rev-parse', 'HEAD'), f.base);
+  f.assertUnpublished();
 });
 
 test('nested, local, and environment lockfiles select the corresponding mise config', (t) => {
@@ -226,7 +221,7 @@ test('an unchanged post-update task does not create an empty commit', (t) => {
   const f = fixture(t);
   f.update({ NO_CHANGE: '1', TASK_NO_CHANGE: '1', POST_UPDATE_TASK: 'generate', POST_UPDATE_PATHS: 'generated docs' });
   assert.match(readFileSync(f.log, 'utf8'), /\|0\|run -- generate/);
-  assert.equal(git(f.repo, 'rev-parse', 'HEAD'), f.base);
+  f.assertUnpublished();
   assert.equal(f.outputs().changed, 'false');
 });
 
@@ -241,7 +236,7 @@ for (const path of ['mise.lock', 'nested/mise.lock', 'mise.prod.lock', '.mise/lo
   test(`post-update corruption of ${path} stops before committing`, (t) => {
     const f = fixture(t, { 'mise.lock': 'old\n', 'nested/mise.lock': 'old\n', 'mise.prod.lock': 'old\n' });
     assert.throws(() => f.update({ SIDECARS: '1', POST_UPDATE_TASK: 'generate', TASK_INVALID_PATH: path }));
-    assert.equal(git(f.repo, 'rev-parse', 'HEAD'), f.base);
+    f.assertUnpublished();
     assert.notEqual(f.outputs().changed, 'true');
   });
 }
@@ -269,7 +264,7 @@ test('post-update paths cannot select the repository root, metadata, or parent d
   for (const path of ['.', './', '..', '../outside', 'generated docs/../../outside', '/tmp', '.git/config']) {
     const f = fixture(t);
     assert.throws(() => f.update({ POST_UPDATE_TASK: 'generate', POST_UPDATE_PATHS: path }), path);
-    assert.equal(git(f.repo, 'rev-parse', 'HEAD'), f.base);
+    f.assertUnpublished();
   }
 });
 
@@ -277,7 +272,7 @@ for (const failure of ['FAIL_INSPECT', 'FAIL_LOCK', 'FAIL_VALIDATE', 'FAIL_INSTA
   test(`${failure} stops before committing or declaring a successful update`, (t) => {
     const f = fixture(t);
     assert.throws(() => f.update({ [failure]: '1', POST_UPDATE_TASK: 'generate' }));
-    assert.equal(git(f.repo, 'rev-parse', 'HEAD'), f.base);
+    f.assertUnpublished();
     assert.notEqual(f.outputs().changed, 'true');
   });
 }

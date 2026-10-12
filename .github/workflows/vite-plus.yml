@@ -1,0 +1,48 @@
+name: vite-plus
+on:
+  workflow_call:
+    inputs:
+      verify-only:
+        description: Validate artifacts without App credentials, commits or pushes
+        required: false
+        type: boolean
+        default: false
+      app-client-id:
+        description: GitHub App client ID; required only for update mode
+        required: false
+        type: string
+        default: ""
+      node-version:
+        description: Node.js major or exact stable version used for dependency maintenance
+        required: false
+        type: string
+        default: "24"
+      pnpm-version:
+        description: pnpm major or exact stable version used for dependency maintenance
+        required: false
+        type: string
+        default: "12"
+      sync-declarations:
+        description: Synchronize exact coverage and workspace overrides with Vite+
+        required: false
+        type: boolean
+        default: false
+    secrets:
+      app-private-key:
+        description: GitHub App private key; required only for update mode
+        required: false
+permissions:
+  contents: read
+jobs:
+  prepare:
+    uses: $/.github/workflows/dependency-artifacts.yml
+    with:
+      verify-only: ${{ inputs['verify-only'] }}
+      mise-enabled: false
+      sync-vite-plus: true
+      sync-declarations: ${{ inputs['sync-declarations'] }}
+      app-client-id: ${{ inputs.app-client-id }}
+      node-version: ${{ inputs.node-version }}
+      pnpm-version: ${{ inputs.pnpm-version }}
+    secrets:
+      app-private-key: ${{ secrets.app-private-key }}

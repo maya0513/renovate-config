@@ -33,8 +33,8 @@ For native automerge on GitHub, enable **Allow auto-merge** and require all nece
 | `0.x` minor automerge | Disabled | Disabled | Enabled | Enabled |
 | Major updates | Separate; manual merge | Separate; manual merge | Separate; automerge inherited from global `automerge: true` | Separate; manual merge, including security fixes |
 | [Platform automerge](https://docs.renovatebot.com/configuration-options/#platformautomerge) | `true`, inactive until automerge is enabled | Same as `config:recommended` | `true` inherited | `true`; GitHub performs the merge |
-| [CI checks](https://docs.renovatebot.com/configuration-options/#ignoretests) | `ignoreTests: false` | `ignoreTests: false` | Inherited `false`; platform protections govern native automerge | Explicit `false`; required GitHub checks govern native automerge |
-| [Artifact status](https://docs.renovatebot.com/configuration-options/#statuscheckwhen) | `artifactError: "failed"` | Same | Same | `artifactError: "always"`; report success and failure |
+| [CI checks](https://docs.renovatebot.com/configuration-options/#ignoretests) | `ignoreTests: false` | `ignoreTests: false` | Inherited `false`; platform protections govern native automerge | Inherited `false`; required GitHub checks govern native automerge |
+| [Artifact status](https://docs.renovatebot.com/configuration-options/#statuscheckwhen) | `artifactError: "failed"` | Same | Same | Same; report failures only |
 | [Rebase policy](https://docs.renovatebot.com/configuration-options/#rebasewhen) | `auto` | `auto` | `conflicted` | `auto` |
 | [GitHub Actions SHA pinning](https://docs.renovatebot.com/presets-helpers/#helperspingithubactiondigests) | Not enforced | Enabled | Enabled except `taiki-e/install-action` | Enabled |
 | [Docker digest pinning](https://docs.renovatebot.com/presets-docker/#dockerpindigests) | Not enforced | Enabled | Enabled | Enabled |
@@ -55,20 +55,28 @@ The `0.x` row describes actual preset behavior. Renovate's [optional non-major a
 
 ## Supplemental workflows
 
-These are separate workflow settings, not part of either official preset. Sources: [jdx workflow at the same revision](https://github.com/jdx/renovate-config/blob/d574ac27d15201ebe7f30af8a9ab1bb90dd23bb0/.github/workflows/mise-lock.yml), [this workflow](../.github/workflows/mise-lock.yml).
+These are separate workflow settings, not part of either official preset. Sources: [jdx workflow at the same revision](https://github.com/jdx/renovate-config/blob/d574ac27d15201ebe7f30af8a9ab1bb90dd23bb0/.github/workflows/mise-lock.yml), [this workflow](../.github/workflows/dependency-artifacts.yml).
 
 | Setting | `config:recommended` | `config:best-practices` | `local>jdx/renovate-config` | `local>maya0513/renovate-config` |
 | --- | --- | --- | --- | --- |
-| Reusable lockfile workflow | Not provided by the preset | Not provided by the preset | `mise-lock.yml` | `mise-lock.yml` |
+| Reusable lockfile workflow | Not provided by the preset | Not provided by the preset | `mise-lock.yml` | `dependency-artifacts.yml`, plus the standalone [`vite-plus.yml`](../.github/workflows/vite-plus.yml) wrapper |
 | App credentials | Not defined | Not defined | Optional `MISE_LOCK_APP_ID` + `MISE_LOCK_APP_PRIVATE_KEY` secrets; falls back to `GITHUB_TOKEN` | Required `app-client-id` input + `app-private-key` secret for updates; unnecessary for verification |
 | Generated artifacts | Not defined | Not defined | `post_update_task`, `post_update_paths` | `post-update-task`, `post-update-paths` |
-| Verification mode | Not defined | Not defined | None | `verify-only: true` fails on regeneration differences; no commit or push |
+| Verification mode | Not defined | Not defined | None | Both workflows support `verify-only: true`; detect regeneration differences, or install locked groups without re-resolving; no App credentials, commit or push |
+| Per-tool platforms | Not defined | Not defined | No dedicated input | `lock-groups` selects lockfiles, tools, platforms and verification method |
 | Own-push prevention | Not defined | Not defined | Mend sender ID; caller filters branches | Updates check Mend sender ID + push event + `renovate/` branch; verification has no event restriction |
 | Branch movement | Not defined | Not defined | Lease, then fetch / inspect / retry or rebase when appropriate | Reject moved or deleted branches using an exact lease |
-| Vite+ alignment | — | — | — | Align coverage with bundled Vitest |
+| Vite+ alignment | — | — | — | Align coverage with bundled Vitest; `sync-declarations` also synchronizes exact declarations, Vitest overrides and the Vite core alias |
+| Supplemental publication | — | — | mise supplemental commit | Run mise, Vite+, then the post-update task; publish one commit with one push, using a separate App-authenticated job |
+
+By default, Vite+ synchronization preserves major-only coverage declarations and edits only `pnpm-lock.yaml`. It checks the Vite alias identity; matching the Vite core version also requires `sync-declarations: true`. Both modes require tracked root `package.json`, `pnpm-workspace.yaml`, and `pnpm-lock.yaml` files, reject a bundled Vitest major change, and verify that runner and coverage resolve the same Vitest instance. Preparation runs with read-only repository permissions; publication validates the patch separately and executes no dependency commands.
+
+Optional presets are kept in `presets/`. The [`presets/vite-plus.json`](../presets/vite-plus.json) preset disables independent updates to Vite+ derived dependencies. It is not part of the shared default. Tuesday scheduling, the seven-day delay and manual major merges remain unchanged. Use it only in repositories using Vite+, together with declaration synchronization. It does not check whether Vite+ is present; selecting it without Vite+ still disables independent updates to the matching dependencies.
+
+Pin reusable workflows to a 40-character commit SHA from main with a trailing `# main` comment. No release tags are introduced. See the [Japanese operations memo](lockfile-operations.ja.md) for combined calls and the limits of locked verification.
 
 Only this repository's own [`renovate.json`](../renovate.json) sets npm `rangeStrategy: "update-lockfile"`: in-range updates change the lockfile, and out-of-range updates change the declared range. Consumers do not inherit this repository-only override. [Range strategy](https://docs.renovatebot.com/configuration-options/#rangestrategy)
 
-This repository verifies human, Renovate, and supplemental App changes through the same CI verification mode. Require `check` and `dependency-artifacts / mise-lock`, with branches up to date against main. Do not require `renovate/artifacts` for every PR: ordinary PRs do not emit it.
+This repository verifies human, Renovate, and supplemental App changes through the same CI verification mode. Require `check` and `dependency-artifacts / prepare`, with branches up to date against main. Do not require `renovate/artifacts` for every PR: ordinary PRs do not emit it.
 
 [`package.json`](../package.json) and [`mise.toml`](../mise.toml) declare matching exact Node and pnpm versions, checked in CI. Repository-only rules group npm and mise updates separately for each tool while keeping major updates manual. Consumers do not inherit these rules. See the [Japanese lockfile operations memo](lockfile-operations.ja.md) for operational guidance.

@@ -1,0 +1,11 @@
+{
+  "$schema": "https://docs.renovatebot.com/renovate-schema.json",
+  "description": "Let Vite+ select Vitest, coverage and Vite core; synchronize them with the shared workflow",
+  "packageRules": [
+    {
+      "matchManagers": ["npm"],
+      "matchPackageNames": ["@vitest/coverage-v8", "vitest", "@voidzero-dev/vite-plus-core"],
+      "enabled": false
+    }
+  ]
+}

@@ -20,19 +20,23 @@ interface WorkflowJob {
   steps: WorkflowStep[];
 }
 
-function readJob(): WorkflowJob {
-  const workflow = parse(readFileSync(new URL('../../.github/workflows/mise-lock.yml', import.meta.url), 'utf8')) as {
-    jobs: Record<string, WorkflowJob>;
-  };
-  const job = workflow.jobs['mise-lock'];
-  assert(job, 'The reusable workflow must define the mise-lock job');
+export function readWorkflow(name: string) {
+  return parse(readFileSync(new URL(`../../.github/workflows/${name}.yml`, import.meta.url), 'utf8'));
+}
+
+export const dependencyArtifactsWorkflow = readWorkflow('dependency-artifacts');
+
+function readJob(name: string): WorkflowJob {
+  const job = dependencyArtifactsWorkflow.jobs[name] as WorkflowJob | undefined;
+  assert(job, `The reusable workflow must define the ${name} job`);
   return job;
 }
 
-export const miseLockJob = readJob();
+export const prepareJob = readJob('prepare');
+export const publishJob = readJob('publish');
 
 function workflowStep(id: string): WorkflowStep {
-  const step = miseLockJob.steps.find((step) => step.id === id);
+  const step = [...prepareJob.steps, ...publishJob.steps].find((step) => step.id === id);
   assert(step, `Workflow step ${id} must exist`);
   return step;
 }
@@ -44,6 +48,13 @@ lock=mise
 if [[ -n "\${MISE_ENV:-}" ]]; then lock+=".$MISE_ENV"; fi
 if [[ " $* " == *' --local '* ]]; then lock+=.local; fi
 lock+=.lock
+if [[ "$1" == config ]]; then
+  config=\"\${lock%.lock}.toml\"
+  config_tools=\${CONFIG_TOOLS:-}
+  if [[ -z "$config_tools" ]]; then config_tools='["node"]'; fi
+  jq -n --arg path "$PWD/$config" --argjson tools "$config_tools" '[{path: $path, tools: $tools}]'
+  exit 0
+fi
 case "$PWD" in
   */.mise|*/.config/mise) sidecars=locks ;;
   */.config) sidecars=mise/locks ;;
@@ -139,7 +150,7 @@ function readOutputs(path: string): Record<string, string> {
   }));
 }
 
-export function fixture(t: TestContext, files: Record<string, string> = { 'mise.lock': 'old lock\n' }) {
+export function fixture(t: TestContext, files: Record<string, string> = { 'mise.lock': 'old lock\n' }, defaults: NodeJS.ProcessEnv = {}) {
   const root = mkdtempSync(join(tmpdir(), 'renovate-mise-test-'));
   t.after(() => rmSync(root, { recursive: true, force: true }));
   const repo = join(root, 'repo');
@@ -168,13 +179,20 @@ export function fixture(t: TestContext, files: Record<string, string> = { 'mise.
   const env: NodeJS.ProcessEnv = {
     ...gitEnvironment,
     PATH: `${bin}:${process.env.PATH}`,
-    ...miseLockJob.env,
+    ...prepareJob.env,
     TEST_LOG: log,
     TEST_REPO: repo,
     RUNNER_TEMP: runnerTemp,
     POST_UPDATE_TASK: '',
     POST_UPDATE_PATHS: '',
     VERIFY_ONLY: 'false',
+    MISE_ENABLED: 'true',
+    SYNC_VITE_PLUS: 'false',
+    SYNC_DECLARATIONS: 'false',
+    LOCK_GROUPS: '[]',
+    GITHUB_SHA: base,
+    GITHUB_PATH: join(runnerTemp, 'path'),
+    ...defaults,
   };
 
   function outputs(): Record<string, string> {
@@ -193,9 +211,40 @@ export function fixture(t: TestContext, files: Record<string, string> = { 'mise.
   function run(id: string, overrides: NodeJS.ProcessEnv = {}): string {
     const step = workflowStep(id);
     assert(step.run, `Workflow step ${id} must define a run script`);
-    if (id === 'update') writeFileSync(output, '');
+    if (id === 'locks') writeFileSync(output, '');
     return runScript(step.run, overrides);
   }
 
-  return { root, repo, remote, bin, log, base, run, runScript, outputs, update: (overrides: NodeJS.ProcessEnv = {}) => run('update', overrides) };
+  let publication = 0;
+  function commitPrepared(overrides: NodeJS.ProcessEnv = {}) {
+    const publisher = join(root, `publisher-${publication++}`);
+    git(root, 'clone', '--branch', 'renovate/test', remote, publisher);
+    const step = workflowStep('commit');
+    assert(step.run);
+    execFileSync('bash', ['-c', step.run], {
+      cwd: publisher, env: { ...env, BASE_SHA: outputs().base, ...overrides },
+      encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'],
+    });
+    git(repo, 'fetch', publisher, 'HEAD');
+    git(repo, 'reset', '--mixed', 'FETCH_HEAD');
+    return publisher;
+  }
+  function prepare(overrides: NodeJS.ProcessEnv = {}) {
+    run('locks', overrides);
+    if ((overrides.SYNC_VITE_PLUS ?? env.SYNC_VITE_PLUS) === 'true') run('sync', overrides);
+    return run('update', overrides);
+  }
+
+  function update(overrides: NodeJS.ProcessEnv = {}) {
+    const result = prepare(overrides);
+    if ((overrides.VERIFY_ONLY ?? env.VERIFY_ONLY) !== 'true' && outputs().changed === 'true') commitPrepared(overrides);
+    return result;
+  }
+
+  function assertUnpublished(): void {
+    assert.equal(git(repo, 'rev-parse', 'HEAD'), base);
+    assert.equal(git(root, '--git-dir', remote, 'rev-parse', 'refs/heads/renovate/test'), base);
+  }
+
+  return { root, repo, remote, bin, log, base, run, runScript, outputs, commitPrepared, prepare, update, assertUnpublished, runnerTemp };
 }

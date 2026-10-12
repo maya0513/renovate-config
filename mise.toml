@@ -16,7 +16,7 @@ depends = ["validate", "typecheck", "test", "lint"]
 [tasks.validate]
 description = "Validate Renovate configuration in strict repository mode"
 depends = ["bootstrap"]
-run = "pnpm exec renovate-config-validator --strict --no-global default.json renovate.json"
+run = "pnpm exec renovate-config-validator --strict --no-global default.json presets/vite-plus.json renovate.json"
 
 [tasks.typecheck]
 description = "Check TypeScript without emitting JavaScript"

@@ -15,6 +15,7 @@ import type { BranchUpgradeConfig } from 'renovate/dist/workers/types.js';
 import { extractPackageFile as extractMise } from 'renovate/dist/modules/manager/mise/extract.js';
 import { updateLockedDependency } from 'renovate/dist/modules/manager/mise/update-locked.js';
 import { extractPackageFile as extractNpm } from 'renovate/dist/modules/manager/npm/extract/index.js';
+import { extractPnpmWorkspaceFile } from 'renovate/dist/modules/manager/npm/extract/pnpm.js';
 import { extractPackageFile as extractActions } from 'renovate/dist/modules/manager/github-actions/extract.js';
 import { api as npmVersioning } from 'renovate/dist/modules/versioning/npm/index.js';
 import { getNodeToolConstraint } from 'renovate/dist/modules/manager/npm/post-update/node-version.js';
@@ -27,6 +28,7 @@ import { checkMinimumReleaseAge } from 'renovate/dist/util/minimum-release-age.j
 import { flattenUpdates } from 'renovate/dist/workers/repository/updates/flatten.js';
 import { cronMatches, isScheduledNow } from 'renovate/dist/workers/repository/update/branch/schedule.js';
 import { resolveLocalConfig } from '../scripts/dry-run.ts';
+import { parse } from 'yaml';
 
 // Use the same Luxon instance as Renovate when probing its cron implementation.
 const requireRenovate = createRequire(realpathSync(new URL('../node_modules/renovate/package.json', import.meta.url)));
@@ -51,6 +53,32 @@ const config = mergeChildConfig(getConfig(), {
   ...resolved,
   repository: 'test/renovate-config',
   semanticCommits: 'disabled',
+});
+
+const optional = (name: string): RenovateConfig => JSON.parse(readFileSync(new URL(`../presets/${name}.json`, import.meta.url), 'utf8'));
+
+test('Vite+ opt-in disables independently selected derived packages, including workspace aliases', async () => {
+  const pkg = await extractNpm(JSON.stringify({ devDependencies: { 'vite-plus': '^1.0.0', '@vitest/coverage-v8': '5.0.1', unrelated: '^1.0.0' } }), 'package.json', {});
+  const workspace = await extractPnpmWorkspaceFile(parse("overrides:\n  'vite@*': 'npm:@voidzero-dev/vite-plus-core@1.0.0'\n  'vitest@*': '5.0.1'\n"), 'pnpm-workspace.yaml');
+  assert(pkg && workspace);
+  const optConfig = mergeChildConfig(config, optional('vite-plus'));
+  for (const type of ['minor', 'major'] as const) {
+    const decorate = (dependency: PackageDependency): PackageDependency => ({
+      ...dependency,
+      // The lookup phase normalizes this before Renovate flattens updates.
+      packageName: dependency.packageName ?? dependency.depName,
+      currentVersion: '1.0.0', updates: dep(dependency.packageName ?? dependency.depName!, type).updates,
+    });
+    const result: BranchUpgradeConfig[] = (await flattenUpdates(optConfig, { npm: [
+      { packageFile: 'package.json', deps: pkg.deps.map(decorate) },
+      { packageFile: 'pnpm-workspace.yaml', deps: workspace.deps.map(decorate) },
+    ] })).filter(update => !update.isLockFileMaintenance);
+    assert.deepEqual(result.map(update => update.packageName).sort(), ['unrelated', 'vite-plus']);
+    assert.notEqual(result[0]!.branchName, result[1]!.branchName);
+    assert(result.every(update => update.automerge === (type === 'minor')));
+    assert(result.every(update => update.minimumReleaseAge === '7 days'));
+  }
+  assert(!JSON.stringify(preset).includes('coverage-v8'));
 });
 
 // Versions below are synthetic SemVer fixtures, independent of installed tools.
@@ -207,7 +235,7 @@ test('weekly lockfile maintenance keeps platform-native automerge', async () => 
   assert.deepEqual(maintenance.schedule, ['* * * * 2']);
 });
 
-test('artifact status reports success as well as failure', async () => {
+test('artifact status reports failures only', async () => {
   const previous = platformApis.get('github')!;
   const statuses: BranchStatusConfig[] = [];
   try {
@@ -218,9 +246,9 @@ test('artifact status reports success as well as failure', async () => {
     });
     setPlatformApi('github');
     await setArtifactErrorStatus({ ...config, branchName: 'renovate/test', artifactErrors: [] });
+    assert.deepEqual(statuses, []);
     await setArtifactErrorStatus({ ...config, branchName: 'renovate/test', artifactErrors: [{ fileName: 'mise.lock', stderr: 'failed to regenerate' }] });
     assert.deepEqual(statuses.map(({ context, state }) => ({ context, state })), [
-      { context: 'renovate/artifacts', state: 'green' },
       { context: 'renovate/artifacts', state: 'red' },
     ]);
   } finally {
@@ -355,10 +383,10 @@ test('local dry-run respects ignored presets and an absent self reference', asyn
 
 test('GitHub Actions and reusable workflows are eligible for SHA pinning', async () => {
   const extracted = await extractActions(`jobs:
-  mise-lock:
-    uses: maya0513/renovate-config/.github/workflows/mise-lock.yml@main
-  vite-plus-lock:
-    uses: maya0513/renovate-config/.github/workflows/vite-plus-lock.yml@main
+  dependency-artifacts:
+    uses: maya0513/renovate-config/.github/workflows/dependency-artifacts.yml@main
+  vite-plus:
+    uses: maya0513/renovate-config/.github/workflows/vite-plus.yml@main
   external:
     uses: example/workflows/.github/workflows/check.yml@v1
   check:

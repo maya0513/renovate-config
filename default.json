@@ -18,9 +18,8 @@
   "automerge": false,
   "automergeType": "pr",
   "platformAutomerge": true,
-  "ignoreTests": false,
   "statusCheckWhen": {
-    "artifactError": "always"
+    "artifactError": "failed"
   },
   "rebaseWhen": "auto",
   "separateMajorMinor": true,

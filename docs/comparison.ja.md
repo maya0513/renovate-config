@@ -33,8 +33,8 @@ GitHubのネイティブ自動マージには、**Allow auto-merge**を有効に
 | `0.x` minorの自動マージ | 無効 | 無効 | 有効 | 有効 |
 | major更新 | 分離・手動マージ | 分離・手動マージ | 分離。全体の`automerge: true`を継承して自動マージ対象 | 分離・手動マージ。脆弱性修正も同様 |
 | [プラットフォーム側の自動マージ](https://docs.renovatebot.com/configuration-options/#platformautomerge) | `true`。自動マージを有効にした場合に使用 | `config:recommended`と同じ | 標準の`true`を継承 | `true`。GitHubがマージする |
-| [CIチェック](https://docs.renovatebot.com/configuration-options/#ignoretests) | `ignoreTests: false` | `ignoreTests: false` | 標準の`false`を継承。ネイティブ自動マージにはプラットフォームの保護ルールが適用 | 明示的に`false`。GitHubの必須チェックがネイティブ自動マージの条件を管理 |
-| [生成結果のステータス](https://docs.renovatebot.com/configuration-options/#statuscheckwhen) | `artifactError: "failed"` | 同じ | 同じ | `artifactError: "always"`。成功・失敗とも表示 |
+| [CIチェック](https://docs.renovatebot.com/configuration-options/#ignoretests) | `ignoreTests: false` | `ignoreTests: false` | 標準の`false`を継承。ネイティブ自動マージにはプラットフォームの保護ルールが適用 | 標準の`false`を継承。GitHubの必須チェックがネイティブ自動マージの条件を管理 |
+| [生成結果のステータス](https://docs.renovatebot.com/configuration-options/#statuscheckwhen) | `artifactError: "failed"` | 同じ | 同じ | 同じ。失敗時のみ表示 |
 | [rebase方針](https://docs.renovatebot.com/configuration-options/#rebasewhen) | `auto` | `auto` | `conflicted` | `auto` |
 | [GitHub ActionsのSHA固定](https://docs.renovatebot.com/presets-helpers/#helperspingithubactiondigests) | 強制しない | 有効 | 有効。ただし`taiki-e/install-action`は除外 | 有効 |
 | [Dockerのdigest固定](https://docs.renovatebot.com/presets-docker/#dockerpindigests) | 強制しない | 有効 | 有効 | 有効 |
@@ -55,20 +55,28 @@ GitHubのネイティブ自動マージには、**Allow auto-merge**を有効に
 
 ## 補助workflow
 
-以下はworkflowの設定で、公式の2つのpresetには含まれません。参照元：[同じリビジョンのjdx workflow](https://github.com/jdx/renovate-config/blob/d574ac27d15201ebe7f30af8a9ab1bb90dd23bb0/.github/workflows/mise-lock.yml)、[本リポジトリのworkflow](../.github/workflows/mise-lock.yml)。
+以下はworkflowの設定で、公式の2つのpresetには含まれません。参照元：[同じリビジョンのjdx workflow](https://github.com/jdx/renovate-config/blob/d574ac27d15201ebe7f30af8a9ab1bb90dd23bb0/.github/workflows/mise-lock.yml)、[本リポジトリのworkflow](../.github/workflows/dependency-artifacts.yml)。
 
 | 設定 | `config:recommended` | `config:best-practices` | `local>jdx/renovate-config` | `local>maya0513/renovate-config` |
 | --- | --- | --- | --- | --- |
-| 再利用可能なlockfile workflow | presetでは提供しない | presetでは提供しない | `mise-lock.yml` | `mise-lock.yml` |
+| 再利用可能なlockfile workflow | presetでは提供しない | presetでは提供しない | `mise-lock.yml` | `dependency-artifacts.yml`。Vite+単独用wrapperの[`vite-plus.yml`](../.github/workflows/vite-plus.yml)も提供 |
 | App認証情報 | 定義なし | 定義なし | 任意の`MISE_LOCK_APP_ID`＋`MISE_LOCK_APP_PRIVATE_KEY` Secrets。未指定時は`GITHUB_TOKEN` | 更新モードは`app-client-id`入力＋`app-private-key` Secretが必須。検証モードは不要 |
 | 生成物の入力 | 定義なし | 定義なし | `post_update_task`・`post_update_paths` | `post-update-task`・`post-update-paths` |
-| 検証モード | 定義なし | 定義なし | なし | `verify-only: true`で再生成差分を検出。コミット・pushなし |
+| 検証モード | 定義なし | 定義なし | なし | 両workflowで`verify-only: true`。再生成差分を検出し、locked指定のgroupは再解決せずinstallで検証。認証・コミット・pushなし |
+| ツール別の対象OS | 定義なし | 定義なし | 専用入力なし | `lock-groups`でlockfile・ツール・OS・検証方法を指定 |
 | 自分のpushによる再生成の防止 | 定義なし | 定義なし | Mendのsender IDを確認。ブランチは呼び出し側で限定 | 更新時はMendのsender ID・pushイベント・`renovate/`ブランチを確認。検証時は制限なし |
 | ブランチの移動 | 定義なし | 定義なし | lease失敗後に取得・判定し、状況に応じて再試行・rebase | SHAを限定したleaseで移動・削除を拒否 |
-| Vite+の整合 | — | — | — | coverageを内蔵Vitestに同期 |
+| Vite+の整合 | — | — | — | coverageを内蔵Vitestに同期。`sync-declarations`でexact宣言・Vitest override・Vite core aliasも同期 |
+| 補助更新の公開 | — | — | miseの補助コミット | mise→Vite+→追加タスクをまとめて1コミット・1push。App認証は別ジョブ |
+
+Vite+同期は既定でcoverageのmajorのみの宣言を維持し、`pnpm-lock.yaml`だけを更新します。Vite aliasの名前を確認し、Vite coreのバージョンまで揃える場合は`sync-declarations: true`を指定します。両モードとも、ルートの`package.json`・`pnpm-workspace.yaml`・`pnpm-lock.yaml`のGit管理が必要で、内蔵Vitestのmajor変更を拒否し、runnerとcoverageが同じVitest実体を参照することを検証します。準備ジョブのリポジトリ権限はreadのみで、公開ジョブは差分を別途検証し、依存コマンドを実行しません。
+
+選択式presetは`presets/`にまとめています。[`presets/vite-plus.json`](../presets/vite-plus.json)は派生依存の独立更新を無効化します。共通defaultには含まれず、火曜日・7日待機・major手動マージの基本方針も変えません。Vite+ presetはVite+を使うリポジトリで宣言同期workflowと併用します。Vite+の有無による自動判定はなく、誤って選択すると派生依存の独立更新だけが停止します。
+
+workflowはmainの40桁SHAで固定し、`# main`を添えて参照します。リリースタグは設けません。統合呼び出し例とlocked検証の範囲は[lockfile運用メモ](lockfile-operations.ja.md)を参照してください。
 
 本リポジトリ自身の[`renovate.json`](../renovate.json)だけが、npmに`rangeStrategy: "update-lockfile"`を指定しています。範囲内ではlockfileを更新し、範囲外では宣言範囲も更新します。利用先にはこのリポジトリ固有の上書きは継承されません。[range方針](https://docs.renovatebot.com/configuration-options/#rangestrategy)
 
-このリポジトリのCIは、人・Renovate・補助Appによる更新を同じ検証モードで確認します。`check`と`dependency-artifacts / mise-lock`を必須チェックとし、最新mainへの追従も必須にします。`renovate/artifacts`は通常のPRには出ないため、全PR共通の必須チェックにはしません。
+このリポジトリのCIは、人・Renovate・補助Appによる更新を同じ検証モードで確認します。`check`と`dependency-artifacts / prepare`を必須チェックとし、最新mainへの追従も必須にします。`renovate/artifacts`は通常のPRには出ないため、全PR共通の必須チェックにはしません。
 
 Node・pnpmは[`package.json`](../package.json)と[`mise.toml`](../mise.toml)で同じ完全バージョンを指定し、CIで一致を確認します。リポジトリ固有のルールでnpm・miseの更新をツール別にグループ化し、majorの手動マージ方針を維持します。利用先には継承されません。運用手順は[lockfile運用メモ](lockfile-operations.ja.md)を参照してください。

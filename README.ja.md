@@ -20,3 +20,7 @@ RenovateのPRとその後のコミットでCIが動くようにし、既定ブ�
 [脆弱性修正PR](https://docs.renovatebot.com/configuration-options/#vulnerabilityalerts)を利用する場合は、対象リポジトリのDependency graphとDependabot alertsを有効にします。
 
 presetは本リポジトリの`main`ブランチを参照します。npmでのインストールやリリースタグの指定は不要です。[presetの参照方法](https://docs.renovatebot.com/config-presets/#self-hosted-git-current-git-server)
+
+更新方針は[設定の比較](docs/comparison.ja.md)、補助workflowの導入方法は[lockfile運用メモ](docs/lockfile-operations.ja.md)を参照してください。workflowには別途呼び出し設定が必要です。Vite+利用時は、宣言同期workflowと併せて[`presets/vite-plus.json`](presets/vite-plus.json)を追加できます。共通presetには含まれません。
+
+ローカル開発では`mise install --locked`の後に`mise run check`を実行すると、設定・TypeScript・回帰テスト・workflowを検証できます。
