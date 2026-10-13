@@ -28,7 +28,7 @@ on:
         type: boolean
         default: false
       post-update-paths:
-        description: Same newline-separated additional output paths used during preparation
+        description: Allowed additional output files or directories (newline-separated)
         required: false
         type: string
         default: ""
@@ -95,8 +95,16 @@ jobs:
               if all(.[]; length > 0 and startswith("/") == false and
                   (split("/") | all(.[]; . != "..")) and . != "." and . != ".git" and startswith(".git/") == false)
               then unique else error("Invalid publishing output paths") end;
-            . == {base: $base, components: ([if $mise == "true" then "mise-pnpm" else empty end, if $viteplus == "true" then "pnpm-viteplus" else empty end]), postUpdatePaths: ($paths | output_paths)}
-          ' "$manifest" > /dev/null || { echo '::error::Publishing manifest does not match explicit permissions'; exit 1; }
+            ([if $mise == "true" then "mise-pnpm" else empty end, if $viteplus == "true" then "pnpm-viteplus" else empty end]) as $components |
+            ($paths | output_paths) as $allowed |
+            (keys == ["base", "components", "postUpdatePaths"]) and .base == $base and
+            (.components | type == "array" and length > 0 and length == (unique | length) and
+              all(.[]; type == "string" and (. as $component | $components | index($component) != null))) and
+            (.postUpdatePaths | type == "array" and all(.[]; type == "string" and test("[\\u0000\\r\\n]") == false) and
+              . == (join("\n") | output_paths) and
+              all(.[]; . as $requested | any($allowed[]; . as $permit |
+                $requested == $permit or ($requested | startswith($permit + "/")))))
+          ' "$manifest" > /dev/null || { echo '::error::Publishing manifest exceeds explicit permissions or has invalid metadata'; exit 1; }
           allowed="$RUNNER_TEMP/publish-allowed"
           : > "$allowed"
           if [[ "$HAS_MISE" == true ]]; then

@@ -76,12 +76,9 @@ test('independent Vite+ composition defaults to verification and never runs mise
 
 interface Project { engines?: { node: string }; packageManager?: string }
 for (const [name, mutate, reason] of [
-  ['missing engines', (p: Project) => delete p.engines, /engines.node must declare an exact stable/],
-  ['Node range', (p: Project) => p.engines!.node = '^24', /engines.node must declare an exact stable/],
-  ['different Node', (p: Project) => p.engines!.node = '24.0.0', /mise declaration and locked node version must match/],
   ['missing manager', (p: Project) => delete p.packageManager, /packageManager must declare pnpm/],
   ['pnpm range', (p: Project) => p.packageManager = 'pnpm@^12', /packageManager must declare pnpm/],
-  ['different pnpm', (p: Project) => p.packageManager = 'pnpm@12.0.0', /mise declaration and locked pnpm version must match/],
+  ['different pnpm', (p: Project) => p.packageManager = 'pnpm@12.0.0', /locked pnpm version must match packageManager/],
   ['different manager', (p: Project) => p.packageManager = 'npm@12.10.1', /packageManager must declare pnpm/],
 ] satisfies [string, (p: Project) => unknown, RegExp][]) {
   test(`mise preparation rejects ${name} without repairing declarations`, t => {
@@ -98,11 +95,18 @@ test('a missing root package.json fails before any mise command', t => {
   assert.equal(readFileSync(f.log, 'utf8'), ''); f.assertUnpublished(); f.assertNoPayload();
 });
 
-test('mise ranges are rejected even when the installed executable matches', t => {
-  const f = fixture(t); write(f.repo, 'mise.toml', '[tools]\nnode = "24"\npnpm = "12.10.1"\n');
-  assert.throws(() => f.prepare(), failure(/mise declaration and locked node version must match/));
-  f.assertUnpublished(); f.assertNoPayload();
-});
+for (const engines of [undefined, { node: '^24 || ^26' }]) {
+  test(`locked tools work with mise ranges and ${engines ? 'a Node compatibility range' : 'no engines declaration'}`, t => {
+    const project = { engines, packageManager: 'pnpm@12.10.1' };
+    const declaration = JSON.stringify(project);
+    const f = fixture(t, {
+      'mise.lock': 'initial lock\n', 'package.json': declaration,
+      'mise.toml': '[tools]\nnode = "24"\npnpm = "12"\n',
+    });
+    f.update();
+    assert.equal(readFileSync(join(f.repo, 'package.json'), 'utf8'), declaration);
+  });
+}
 
 test('integrity suffixes are preserved while exact pnpm versions are checked', t => {
   const value = `pnpm@12.10.1+sha512.${'a'.repeat(128)}`;
@@ -110,21 +114,33 @@ test('integrity suffixes are preserved while exact pnpm versions are checked', t
   f.update(); assert.equal(JSON.parse(readFileSync(join(f.repo, 'package.json'), 'utf8')).packageManager, value);
 });
 
-test('the final check rejects a different pnpm executable before creating a payload', t => {
+test('the final check rejects a different pnpm version before creating a payload', t => {
   const f = fixture(t); const mise = f.runComponent('mise-pnpm', { 'verify-only': 'false' });
-  write(f.root, 'other/pnpm', '#!/bin/sh\necho 12.10.1\n'); chmodSync(join(f.root, 'other/pnpm'), 0o755);
+  write(f.root, 'other/pnpm', '#!/bin/sh\necho 12.0.0\n'); chmodSync(join(f.root, 'other/pnpm'), 0o755);
   appendFileSync(join(f.runnerTemp, 'path'), join(f.root, 'other') + '\n');
-  assert.throws(() => f.runComponent('pnpm-outputs', { 'mise-state': mise.outputs.state! }), failure(/selected pnpm executable must come from mise/));
+  assert.throws(() => f.runComponent('pnpm-outputs', { 'mise-state': mise.outputs.state! }), failure(/running pnpm version must match the locked version/));
   f.assertUnpublished(); f.assertNoPayload();
 });
 
-for (const tamper of ['base', 'components', 'paths', 'extra-key', 'missing', 'symlink'] as const) {
+test('a pnpm wrapper running the locked version passes final validation', t => {
+  const f = fixture(t); const mise = f.runComponent('mise-pnpm', { 'verify-only': 'false' });
+  write(f.root, 'wrapper/pnpm', '#!/bin/sh\nexec "$TEST_BIN/pnpm" "$@"\n');
+  chmodSync(join(f.root, 'wrapper/pnpm'), 0o755);
+  appendFileSync(join(f.runnerTemp, 'path'), join(f.root, 'wrapper') + '\n');
+  f.runComponent('pnpm-outputs', { 'mise-state': mise.outputs.state! });
+  assert.equal(f.outputs().changed, 'true');
+  f.commitPrepared();
+});
+
+for (const tamper of ['base', 'components', 'component-type', 'paths', 'path-type', 'extra-key', 'missing', 'symlink'] as const) {
   test(`publisher rejects ${tamper} manifest before committing`, t => {
     const f = fixture(t); f.prepare(); const path = join(f.runnerTemp, 'pnpm-artifacts/manifest.json');
     const manifest = JSON.parse(readFileSync(path, 'utf8'));
     if (tamper === 'base') manifest.base = '0'.repeat(40);
     if (tamper === 'components') manifest.components = ['mise-pnpm', 'pnpm-viteplus'];
+    if (tamper === 'component-type') manifest.components = [['mise-pnpm']];
     if (tamper === 'paths') manifest.postUpdatePaths = ['unrelated.txt'];
+    if (tamper === 'path-type') manifest.postUpdatePaths = [null];
     if (tamper === 'extra-key') manifest.execute = 'touch should-never-exist';
     write(f.runnerTemp, 'pnpm-artifacts/manifest.json', JSON.stringify(manifest));
     if (tamper === 'missing') rmSync(path);
@@ -136,9 +152,31 @@ for (const tamper of ['base', 'components', 'paths', 'extra-key', 'missing', 'sy
 
 test('publisher detects omitted Vite+ permission even when only mise locks changed', t => {
   const f = viteFixture(t, { aligned: true, miseChanges: true }); f.prepare();
-  assert.throws(() => f.commitPrepared({ HAS_VITEPLUS: 'false' }), failure(/Publishing manifest does not match explicit permissions/));
+  assert.throws(() => f.commitPrepared({ HAS_VITEPLUS: 'false' }), failure(/Publishing manifest exceeds explicit permissions/));
   f.assertUnpublished();
 });
+
+test('publisher accepts selected components and output paths within a broader authorization', t => {
+  const f = fixture(t, undefined, {
+    POST_UPDATE_TASK: 'generate', POST_UPDATE_PATHS: 'generated docs/reference.txt',
+  });
+  f.prepare();
+  f.commitPrepared({ HAS_VITEPLUS: 'true', POST_UPDATE_PATHS: 'generated docs\nother allowed outputs' });
+  const changed = git(f.repo, 'diff', '--name-only', f.base, 'HEAD').split('\n');
+  assert.deepEqual(changed.sort(), ['generated docs/reference.txt', 'mise.lock']);
+});
+
+for (const requested of ['generated docs-extra/file', 'generated docs/../unrelated.txt', 'unrelated.txt']) {
+  test(`publisher rejects output request outside its directory permission: ${requested}`, t => {
+    const f = fixture(t); f.prepare();
+    const path = join(f.runnerTemp, 'pnpm-artifacts/manifest.json');
+    const manifest = JSON.parse(readFileSync(path, 'utf8'));
+    manifest.postUpdatePaths = [requested];
+    write(f.runnerTemp, 'pnpm-artifacts/manifest.json', JSON.stringify(manifest));
+    assert.throws(() => f.commitPrepared({ POST_UPDATE_PATHS: 'generated docs' }), failure(/Publishing manifest exceeds explicit permissions/));
+    f.assertUnpublished();
+  });
+}
 
 test('equivalent explicit output paths match without widening publishing permission', t => {
   const paths = './generated docs/\r\n\n';
@@ -161,7 +199,7 @@ test('final validation rejects independently prepared states with different mode
 
 test('locked pnpm version mismatch fails despite matching declaration and executable', t => {
   const f = fixture(t);
-  assert.throws(() => f.prepare({ TEST_LOCKED_PNPM_VERSION: '12.0.0' }), failure(/mise declaration and locked pnpm version must match/));
+  assert.throws(() => f.prepare({ TEST_LOCKED_PNPM_VERSION: '12.0.0' }), failure(/locked pnpm version must match packageManager/));
   f.assertUnpublished(); f.assertNoPayload();
 });
 
@@ -171,7 +209,7 @@ test('an actually different Node executable fails even if metadata claims the de
   assert(different?.installed, 'Run mise run test:tools');
   const f = fixture(t);
   assert.throws(() => f.prepare({ TEST_NODE_HOME: different.install_path, TEST_LOCKED_NODE_VERSION: process.versions.node }),
-    failure(/running node version must match package.json/));
+    failure(/running node version must match the locked version/));
   f.assertUnpublished(); f.assertNoPayload();
 });
 

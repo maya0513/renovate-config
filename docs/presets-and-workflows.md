@@ -30,12 +30,21 @@ Renovate retains native npm artifact generation for pnpm updates. Companion acti
 
 Run preparation on Linux, such as Ubuntu, with Bash, GNU coreutils, jq, Git and mise. Lock-group target platforms are distinct from the runner performing generation.
 
-1. Generate and track initial mise locks, sidecars and the pnpm lockfile. Declare matching exact Node/pnpm versions in mise and `package.json`; set `pmOnFail: error` in `pnpm-workspace.yaml`.
+1. Generate and track initial mise locks, sidecars and the pnpm lockfile. Match the pnpm version in `packageManager` to the mise locked version. Setting `pmOnFail: error` for local use is recommended.
 2. Extend the shared default and configuration-specific presets. Presets do not invoke actions.
 3. Prepare checkout (`persist-credentials: false`) and mise-action (`install: false`), then invoke the components in order. Pass identical lock groups, generation task and output paths to update and verification callers.
 4. Run CI for both updates and verification. Only Mend Renovate pushes to `renovate/` branches use update mode; follow-up App pushes use verification.
 
-Declaration validation: root `package.json` must declare exact stable `engines.node` and `packageManager: "pnpm@x.y.z"`. Shared preparation checks mise declarations, locked versions and actual executables against these values. Missing declarations, ranges, mismatches and untracked locks fail without repair. Standard package-manager integrity suffixes are preserved. Consumers still choose versions and `@types/node` constraints.
+Tool validation compares locked and running versions, rather than declaration strings or executable locations. Shims and wrappers running the same version are supported. Mismatches and untracked locks fail without repair.
+
+| Declaration | Requirement |
+| --- | --- |
+| mise Node/pnpm | Exact versions, majors or other mise-supported selectors. Each tool must resolve to one installed version under locked operation |
+| Root `packageManager` | Required as `pnpm@x.y.z`, matching the locked pnpm version. Standard integrity suffixes are preserved |
+| `engines.node` | Optional compatibility range, evaluated by pnpm itself |
+| Adopted majors and `@types/node` | Chosen by consumers |
+
+Renovate selects Node for npm artifact generation separately. To pin its runtime independently of the compatibility range, use a standard source Renovate reads, such as `.node-version`, matching the mise locked version and keeping them aligned during updates. The shared action does not automatically pin or compare Renovate's runtime.
 
 Setting `pmOnFail: error` aligns local commands with this policy. Shared components always supply the CLI flag, so a missing setting alone does not fail them.
 
@@ -71,8 +80,8 @@ The publishing job uses `needs: prepare` and `uses: maya0513/renovate-config/.gi
 | --- | --- |
 | `base`, `changed`, `artifact-id` | Matching outputs from `needs.prepare.outputs` |
 | `mise` | `true` (default): include mise outputs in the publishing allowlist |
-| `viteplus` | `true` only when composing Vite+: also allow root declarations and the pnpm lockfile |
-| `post-update-paths` | Same value as preparation |
+| `viteplus` | `true` to permit Vite+ outputs, including root declarations and the pnpm lockfile |
+| `post-update-paths` | Authorized additional files/directories, containing the preparation-side requests |
 | `app-client-id` | App Client ID |
 | Secret `app-private-key` | App private key |
 
@@ -119,7 +128,7 @@ Some duplication remains between update/verification inputs and independent publ
 
 Recommended names: Variable `DEPENDENCY_ARTIFACTS_APP_CLIENT_ID`, Secret `DEPENDENCY_ARTIFACTS_APP_PRIVATE_KEY`. Reuse an existing App installation; existing Secrets need not be renamed. Limit App publication to Contents-write for the target repository. Ordinary `GITHUB_TOKEN` access is Contents-read.
 
-The publisher checks out the original SHA and downloads the patch and data manifest by immutable artifact ID. It compares manifest base, selected components and additional output paths with its explicit inputs before committing or creating an App token. The manifest never expands publication permissions. It validates allowed paths and regular files, commits, then creates the App token and pushes with an original-SHA lease. Moved or deleted branches are never overwritten.
+The publisher checks out the original SHA and downloads the patch and data manifest by immutable artifact ID. Before committing or creating an App token, it requires a matching base and checks that selected components and additional output paths are within its explicit authorization. A run need not use every authorized component or generate an entire authorized directory. The manifest never expands publication permissions. The publisher independently checks actual changed paths and regular files, commits, then creates the App token and pushes with an original-SHA lease. Moved or deleted branches are never overwritten.
 
 There are no old-name compatibility files. Pin consumers' old preset references to an existing SHA before merging the shared deletion. Then migrate to the new preset name and components at the same reviewed SHA. [Issue #3](https://github.com/maya0513/renovate-config/issues/3) remains incomplete until consumer migration, full CI and latest-SHA CI after App publication have been confirmed.
 

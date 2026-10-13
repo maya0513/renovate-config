@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import { execFileSync } from 'node:child_process';
-import { readFileSync, rmSync, symlinkSync } from 'node:fs';
-import { join } from 'node:path';
+import { chmodSync, readFileSync, realpathSync, rmSync, symlinkSync } from 'node:fs';
+import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { test } from 'node:test';
 import { fixture, git, write } from './helpers/pnpm-artifacts.ts';
@@ -14,6 +14,54 @@ function tools(name: string): Tool[] {
   assert.equal(versions.length, 2, `Declare two ${name} versions in the test mise configuration`);
   assert(versions.every(tool => tool.installed), 'Run mise run test:tools before the transition tests');
   return versions.sort((a, b) => a.version.localeCompare(b.version, undefined, { numeric: true }));
+}
+
+for (const engines of [undefined, { node: '>=24 <27' }, { node: '<1' }]) {
+  test(`real locked mise ranges and pnpm ${engines ? `evaluate engines ${engines.node}` : 'allow absent engines'}`, { timeout: 60_000 }, async t => {
+    const f = fixture(t, {
+      '.gitignore': 'node_modules/\n',
+      'mise.toml': '[tools]\nnode = "24"\npnpm = "12"\n',
+      'mise.lock': readFileSync(new URL('../mise.lock', import.meta.url), 'utf8'),
+      'package.json': JSON.stringify({ name: 'engine-compatibility', private: true, packageManager: 'pnpm@12.10.1', devDependencies: { ordinary: '1.0.0' } }),
+      'pnpm-workspace.yaml': 'pmOnFail: error\nengineStrict: true\n',
+    });
+    const registry = await packageRegistry(t, f.root);
+    const mise = realpathSync(execFileSync('which', ['mise'], { encoding: 'utf8' }).trim());
+    const pnpm = tools('pnpm')[0]!;
+    const nodeHome = execFileSync(mise, ['where', 'node'], { encoding: 'utf8' }).trim();
+    write(f.root, 'empty.toml', '');
+    const env = {
+      ...registry.env, MISE_TRUSTED_CONFIG_PATHS: f.repo, TEST_REAL_MISE: mise,
+      MISE_DATA_DIR: dirname(dirname(dirname(nodeHome))),
+      MISE_GLOBAL_CONFIG_FILE: join(f.root, 'empty.toml'), MISE_SYSTEM_CONFIG_FILE: join(f.root, 'empty.toml'),
+      MISE_SHIMS_DIR: join(f.root, 'shims'),
+    };
+    // Only the generic test fixture's mise/pnpm shims are replaced. All public
+    // component steps, locked selection and final frozen checks execute normally.
+    write(f.bin, 'mise', '#!/bin/sh\nexec "$TEST_REAL_MISE" "$@"\n');
+    chmodSync(join(f.bin, 'mise'), 0o755);
+    rmSync(join(f.bin, 'pnpm')); symlinkSync(join(pnpm.install_path, 'pnpm'), join(f.bin, 'pnpm'));
+    execFileSync(join(pnpm.install_path, 'pnpm'), ['install', '--lockfile-only', '--ignore-scripts', '--ignore-pnpmfile', '--pm-on-fail=error'], {
+      cwd: f.repo, env: { ...process.env, ...env }, encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'],
+    });
+    write(f.repo, 'package.json', JSON.stringify({ name: 'engine-compatibility', private: true, engines, packageManager: 'pnpm@12.10.1', devDependencies: { ordinary: '1.0.0' } }));
+    git(f.repo, 'add', '.'); git(f.repo, 'commit', '-m', 'initial pnpm lock');
+    const base = git(f.repo, 'rev-parse', 'HEAD');
+    const run = () => f.prepare({ ...env, VERIFY_ONLY: 'true', LOCK_GROUPS: JSON.stringify([
+      { lockfile: 'mise.lock', tools: ['node', 'pnpm'], platforms: ['linux-x64'], verify: 'locked' },
+    ]) });
+    if (engines?.node === '<1') {
+      assert.throws(run, error => {
+        assert(error instanceof Error && 'stdout' in error);
+        assert.match(String(error.stdout) + String((error as Error & { stderr?: string }).stderr), /ERR_PNPM_UNSUPPORTED_ENGINE/);
+        return true;
+      });
+      f.assertNoPayload();
+    } else {
+      run(); assert.equal(f.outputs().changed, 'false');
+    }
+    assert.equal(git(f.repo, 'rev-parse', 'HEAD'), base);
+  });
 }
 
 for (const viteplus of [false, true]) {

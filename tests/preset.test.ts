@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict';
-import { cpSync, mkdtempSync, readFileSync, readdirSync, realpathSync, rmSync } from 'node:fs';
+import { cpSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, realpathSync, rmSync, writeFileSync } from 'node:fs';
 import { after, test } from 'node:test';
 import { createRequire } from 'node:module';
 import { tmpdir } from 'node:os';
@@ -267,6 +267,20 @@ test('npm artifact generation selects the exact Node and pnpm versions declared 
   assert.equal(pnpm, tools.deps.find(dep => dep.depName === 'pnpm')?.currentValue);
   assert.match(node.constraint!, /^\d+\.\d+\.\d+$/);
   assert.match(pnpm!, /^\d+\.\d+\.\d+$/);
+});
+
+test('Renovate can pin artifact Node independently of the application engines range', async () => {
+  const directory = join(repository, 'node-selection');
+  mkdirSync(directory);
+  const version = process.versions.node;
+  writeFileSync(join(directory, 'package.json'), JSON.stringify({ engines: { node: '^24 || ^26' } }));
+  const range = await getNodeToolConstraint(config, [], 'node-selection', lazyLoadPackageJson('node-selection'));
+  assert.equal(range.constraint, '^24 || ^26');
+  writeFileSync(join(directory, '.node-version'), `${version}\n`);
+  const pinned = await getNodeToolConstraint(config, [], 'node-selection', lazyLoadPackageJson('node-selection'));
+  assert.equal(pinned.constraint, version);
+  const extracted = await extractNpm(readFileSync(join(directory, 'package.json'), 'utf8'), 'node-selection/package.json', {});
+  assert(extracted?.deps.some(dep => dep.depName === 'node' && dep.currentValue === '^24 || ^26'));
 });
 
 test('repository tool updates group npm and mise per tool and preserve manual majors', async () => {

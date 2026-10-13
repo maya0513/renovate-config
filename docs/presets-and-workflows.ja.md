@@ -30,12 +30,21 @@ pnpm更新時のnpm artifact生成はRenovateに残します。補助actionは�
 
 準備ジョブはUbuntuなどのLinux環境で実行します。Bash・GNU coreutils・jq・Gitとmiseが必要です。lock groupの対象OSと、生成処理を実行するrunnerのOSは別です。
 
-1. 初回のmise lockfile・sidecar・pnpm lockfileを生成し、追跡対象にします。Node・pnpmの完全バージョンをmiseと`package.json`で一致させ、`pnpm-workspace.yaml`に`pmOnFail: error`を設定します。
+1. 初回のmise lockfile・sidecar・pnpm lockfileを生成し、追跡対象にします。`packageManager`のpnpm版をmiseのlocked版に合わせます。ローカル実行にも`pmOnFail: error`を設定することを推奨します。
 2. `extends`に共通defaultと構成に合うpresetを追加します。presetだけではactionは動きません。
 3. callerの準備ジョブにcheckout（`persist-credentials: false`）とmise-action（`install: false`）を用意し、上表の順で部品を呼びます。更新・検証には同じlock group、タスク、公開パスを渡します。
 4. 更新・検証の双方でCIを動かします。更新はMend Renovateのpushかつ`renovate/`ブランチに限定し、Appによる補助pushは検証として扱います。
 
-宣言の整合検査：rootの`package.json`に完全バージョンの`engines.node`と`packageManager: "pnpm@x.y.z"`が必要です。miseの宣言、lockedで選ばれた版、実行ファイルとの一致を共通処理で確認します。欠落・範囲指定・不一致・未追跡lockfileはエラーで、修復しません。`packageManager`の標準的なintegrity suffixは保持します。具体的なバージョンと`@types/node`の制約は利用先が決めます。
+ツールの整合検査：宣言文字列や実行ファイルの保存場所ではなく、lockedで選ばれた版と実行版を照合します。同じ版を実行するshim・wrapperも利用できます。不一致・未追跡lockfileはエラーで、修復しません。
+
+| 記述 | 条件 |
+| --- | --- |
+| miseのNode・pnpm | 完全バージョン、majorなどmiseが扱える指定。lockedで各ツールが一つのインストール済み版に解決されること |
+| rootの`packageManager` | `pnpm@x.y.z`が必要。miseのlocked pnpm版と一致させる。標準的なintegrity suffixは保持 |
+| `engines.node` | 任意。互換性の範囲として記述でき、pnpm標準の評価に従う |
+| 採用major・`@types/node` | 利用先が決定 |
+
+Renovateによるnpm artifact生成のNode選択は別です。互換性の範囲と実行版を分けて固定したい場合は、Renovateが標準で読む`.node-version`などにmiseのlocked版を指定し、更新時も揃えてください。共通actionがRenovateの実行版まで自動的に固定・照合するわけではありません。
 
 `pmOnFail: error`の設定はローカル実行も同じ方針に揃えるためのものです。共通処理ではCLIで常に指定するため、設定ファイルへの記載がないこと自体では失敗しません。
 
@@ -71,8 +80,8 @@ Vite+なし：`viteplus`ステップと`viteplus-state`入力を省きます。�
 | --- | --- |
 | `base`・`changed`・`artifact-id` | `needs.prepare.outputs`の同名出力 |
 | `mise` | `true`（既定）。mise生成物を公開対象にする |
-| `viteplus` | Vite+部品を組み合わせた場合だけ`true`。rootの宣言・pnpm lockfileも公開対象にする |
-| `post-update-paths` | 準備ジョブに渡したものと同じ値 |
+| `viteplus` | Vite+生成物の公開を許可する場合に`true`。rootの宣言・pnpm lockfileも公開対象にする |
+| `post-update-paths` | 公開を許可する追加ファイル・ディレクトリ。準備側の指定を含む範囲 |
 | `app-client-id` | AppのClient ID |
 | Secret `app-private-key` | Appの秘密鍵 |
 
@@ -119,7 +128,7 @@ lock groupの例：
 
 推奨名：Variable `DEPENDENCY_ARTIFACTS_APP_CLIENT_ID`、Secret `DEPENDENCY_ARTIFACTS_APP_PRIVATE_KEY`。既存Appのインストールを再利用でき、既存Secretの改名は不要です。Appの公開権限は対象リポジトリのContents-writeに限定します。通常の`GITHUB_TOKEN`はContents-readです。
 
-公開workflowは元SHAでcheckoutし、immutable artifact IDからpatchとデータ用manifestを取得します。manifestの元SHA・選択部品・追加公開パスを、公開側の明示入力と照合します。不一致はコミットとApp token作成前に拒否し、manifestから公開許可を増やすことはしません。許可パス・通常ファイルであることを再検証してコミットした後にApp tokenを作り、元SHAを指定したleaseでpushします。移動・削除済みブランチは上書きしません。
+公開workflowは元SHAでcheckoutし、immutable artifact IDからpatchとデータ用manifestを取得します。元SHAの一致と、選択部品・追加公開パスが公開側の明示した許可範囲内であることを、コミットとApp token作成前に確認します。許可した部品を毎回使い切る必要はなく、許可ディレクトリ内の一部だけを生成することもできます。manifestから公開許可を増やすことはしません。実際の変更パス・通常ファイルであることを独立に再検証してコミットした後にApp tokenを作り、元SHAを指定したleaseでpushします。移動・削除済みブランチは上書きしません。
 
 旧名の互換ファイルはありません。旧preset参照を使う利用先を先に既存SHAへ固定してから、共通側の削除をmainへ入れてください。その後、新preset名と同じレビュー済みSHAの各部品へ移行します。利用先の移行・CI・App push後の最新SHA確認が済むまでは、[#3](https://github.com/maya0513/renovate-config/issues/3)全体の完了とは扱いません。
 
