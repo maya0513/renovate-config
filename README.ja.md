@@ -21,16 +21,15 @@ RenovateのPRとその後のコミットでCIが動くようにし、既定ブ�
 
 presetは本リポジトリの`main`ブランチを参照します。npmでのインストールやリリースタグの指定は不要です。[presetの参照方法](https://docs.renovatebot.com/config-presets/#self-hosted-git-current-git-server)
 
-更新方針は[設定の比較](docs/comparison.ja.md)、共通化する範囲と既存利用先の移行は[プリセットの境界](docs/preset-boundaries.ja.md)、補助workflowの導入方法は[lockfile運用メモ](docs/lockfile-operations.ja.md)を参照してください。
+更新方針は[設定の比較](docs/comparison.ja.md)を参照してください。
 
-共通defaultにはnpmの`rangeStrategy: update-lockfile`を含みます。runner変更と本リポジトリの再利用workflow更新は手動レビュー対象です。ツール構成は選択式にしています。
+共通defaultにはnpmの`rangeStrategy: update-lockfile`を含みます。runner変更と本リポジトリのaction・再利用workflow更新は手動レビュー対象で、共通参照は同じグループで更新します。
 
-| 構成 | 追加するpreset | 必要なworkflow |
+| 構成 | 追加するpreset | 利用先で組み合わせる部品 |
 | --- | --- | --- |
-| mise管理のNode・pnpm | [`presets/mise-pnpm.json`](presets/mise-pnpm.json) | `dependency-artifacts.yml`の更新・検証caller |
-| Vite+の派生依存 | [`presets/vite-plus.json`](presets/vite-plus.json) | 宣言同期を有効にした`vite-plus.yml`または`dependency-artifacts.yml` |
-| 両方 | 上記2つ | `dependency-artifacts.yml`に統合 |
+| mise管理のNode・pnpm | [`presets/mise-pnpm.json`](presets/mise-pnpm.json) | `mise-pnpm` → `pnpm-outputs` |
+| 上記＋pnpm管理のVite+ | 上記＋[`presets/viteplus.json`](presets/viteplus.json) | `mise-pnpm` → `pnpm-viteplus` → `pnpm-outputs` |
 
-presetだけではworkflowは動きません。`mise-pnpm`はmiseとNode更新時のartifact生成を止めるため、追跡済みmise lockfileと更新・検証callerを用意してから導入します。pnpm更新時のnpm artifact生成はRenovateに残します。
+生成・検証部品はcomposite actionです。更新時だけ、別ジョブの`publish-pnpm-artifacts.yml`で検証済みの結果を公開します。presetだけではこれらは動きません。追跡済みlockfileと更新・検証callerを用意してから導入してください。pnpm更新時のnpm artifact生成はRenovateに残します。
 
-ローカル開発では`mise install --locked`の後に`mise run check`を実行すると、設定・TypeScript・回帰テスト・workflowを検証できます。
+ローカル開発では`mise install --locked`の後に`mise run check`を実行すると、設定・TypeScript・回帰テスト・workflow・内部actionを検証できます。

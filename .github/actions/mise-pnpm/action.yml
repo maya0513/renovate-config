@@ -1,0 +1,36 @@
+name: Prepare mise-managed Node and pnpm
+description: Generate or validate selected mise locks and install the declared Node and pnpm executables.
+inputs:
+  verify-only:
+    description: Validate without publishing; locked groups do not re-resolve
+    required: false
+    default: "true"
+  lock-groups:
+    description: JSON lockfile, tools, platforms, verify groups
+    required: false
+    default: "[]"
+outputs:
+  base:
+    description: Original consumer commit
+    value: ${{ steps.locks.outputs.base }}
+  state:
+    description: Preparation state for pnpm-outputs
+    value: ${{ steps.locks.outputs.state }}
+runs:
+  using: composite
+  steps:
+    - id: locks
+      shell: bash
+      env:
+        ACTION_PATH: ${{ github.action_path }}
+        VERIFY_ONLY: ${{ inputs['verify-only'] }}
+        LOCK_GROUPS: ${{ inputs['lock-groups'] }}
+        GITHUB_TOKEN: ${{ github.token }}
+        MISE_SAFE: "1"
+      run: bash "$ACTION_PATH/prepare.sh"
+    - id: tools
+      shell: bash
+      env:
+        ACTION_PATH: ${{ github.action_path }}
+        MISE_SAFE: "1"
+      run: bash "$ACTION_PATH/tools.sh"

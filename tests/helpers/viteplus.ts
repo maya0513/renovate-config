@@ -1,26 +1,26 @@
 import { readFileSync, rmSync, symlinkSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import type { TestContext } from 'node:test';
-import { fixture as artifactFixture, write } from './dependency-artifacts.ts';
+import { fixture as artifactFixture, write } from './pnpm-artifacts.ts';
 
-export interface VitePlusOptions {
+export interface ViteplusOptions {
   workspace?: string;
-  exact?: boolean; aligned?: boolean; declarations?: boolean; combined?: boolean;
+  exact?: boolean; aligned?: boolean; declarations?: boolean; miseChanges?: boolean;
   duplicate?: boolean; major?: boolean; invalid?: boolean; alias?: boolean;
   instance?: boolean; symlink?: boolean; fail?: boolean; mutate?: boolean;
   unrelated?: boolean; unrelatedVersion?: boolean; unfixed?: boolean; viteChanged?: boolean; invalidCore?: boolean;
 }
-export function fixture(t: TestContext, options: VitePlusOptions = {}) {
-  const env = { MISE_ENABLED: String(Boolean(options.combined)), SYNC_VITE_PLUS: 'true', SYNC_DECLARATIONS: String(Boolean(options.declarations)) };
+export function fixture(t: TestContext, options: ViteplusOptions = {}) {
+  const env = { HAS_MISE: 'true', HAS_VITEPLUS: 'true', NO_CHANGE: options.miseChanges ? '0' : '1' };
   const bundled = options.major ? '6.0.1' : options.declarations ? '5.0.2' : '5.0.1';
   const initialCoverage = options.aligned ? bundled : '5.0.3';
   const workspace = "packages: ['.']\noverrides:\n  'vite@*': 'npm:@voidzero-dev/vite-plus-core@1.0.0'\n" +
-    (options.declarations ? "  'vitest@*': '5.0.1'\n" : '') + "peerDependencyRules:\n  allowedVersions:\n    vite: '1'\n";
+    "  'vitest@*': '5.0.1'\n" + "peerDependencyRules:\n  allowedVersions:\n    vite: '1'\n";
   const f = artifactFixture(t, {
     '.gitignore': 'node_modules/\n.cache/\n',
-    ...(options.combined ? { 'mise.lock': 'old lock\n' } : {}),
-    'package.json': `${JSON.stringify({ type: 'module', devDependencies: { 'vite-plus': '1', '@vitest/coverage-v8': options.exact ? '5.0.3' : '5', ...(options.unrelatedVersion ? { other: '^1.0.0' } : {}) } }, null, 2)}\n`,
-    'pnpm-workspace.yaml': options.workspace ?? workspace,
+    'mise.lock': 'old lock\n',
+    'package.json': `${JSON.stringify({ type: 'module', engines: { node: process.versions.node }, packageManager: 'pnpm@12.10.1', devDependencies: { 'vite-plus': '1', '@vitest/coverage-v8': options.major ? '5' : options.exact ? '5.0.3' : options.declarations ? '5' : bundled, ...(options.unrelatedVersion ? { other: '^1.0.0' } : {}) } }, null, 2)}\n`,
+    'pnpm-workspace.yaml': options.workspace ?? (options.declarations ? workspace : workspace.replace('vite-plus-core@1.0.0', 'vite-plus-core@1.0.1')),
     'pnpm-lock.yaml': `lockfileVersion: '9.0'\npackages:\n  vitest@${options.declarations ? '5.0.1' : bundled}:\n${options.duplicate ? '  vitest@5.0.9:\n' : ''}  coverage@${initialCoverage}:\n`,
   }, env);
   const pkg = (name: string, data: unknown) => write(f.repo, `node_modules/${name}/package.json`, JSON.stringify(data));
@@ -36,7 +36,7 @@ export function fixture(t: TestContext, options: VitePlusOptions = {}) {
     rmSync(join(f.repo, 'node_modules/@vitest/coverage-v8'), { recursive: true });
     symlinkSync('../coverage-old', join(f.repo, 'node_modules/@vitest/coverage-v8'));
   }
-  pkg('vite', { name: options.alias ? 'vite' : '@voidzero-dev/vite-plus-core', version: options.aligned ? '1.0.1' : '1.0.0' });
+  pkg('vite', { name: options.alias ? 'vite' : '@voidzero-dev/vite-plus-core', version: options.declarations && !options.aligned ? '1.0.0' : '1.0.1' });
   if (options.unrelatedVersion) {
     pkg('other', { name: 'other', version: '1.0.0', dependencies: { transitive: '^1.0.0' } });
     pkg('transitive', { name: 'transitive', version: '1.0.0' });
@@ -46,6 +46,7 @@ export function fixture(t: TestContext, options: VitePlusOptions = {}) {
   writeFileSync(join(f.bin, 'pnpm'), `#!${process.execPath}
 import fs from 'node:fs';
 const args = process.argv.slice(2);
+if (args[0] === '--version') { console.log('12.10.1'); process.exit(0); }
 fs.appendFileSync(${JSON.stringify(pnpmLog)}, JSON.stringify(args) + '\\n');
 if (${Boolean(options.fail)}) process.exit(1);
 if (args[0] === 'update' || args.includes('--no-frozen-lockfile')) {

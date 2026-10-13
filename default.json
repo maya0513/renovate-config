@@ -78,9 +78,10 @@
       "automerge": false
     },
     {
-      "description": "Review shared dependency workflow revisions manually without release-age delays",
+      "description": "Review shared dependency automation revisions manually without release-age delays",
       "matchManagers": ["github-actions"],
-      "matchDepTypes": ["workflow"],
+      "matchDepTypes": ["workflow", "action"],
+      "groupName": "Shared dependency automation",
       "matchPackageNames": ["maya0513/renovate-config"],
       "automerge": false,
       "minimumReleaseAge": null

@@ -23,16 +23,21 @@ description = "Check TypeScript without emitting JavaScript"
 depends = ["bootstrap"]
 run = "pnpm exec tsc --noEmit"
 
+[tasks."test:tools"]
+description = "Install the fixed executable pairs used by transition regression tests"
+run = "mise -C tests/fixtures install node pnpm"
+
 [tasks.test]
 description = "Run preset and reusable workflow regression tests"
-depends = ["bootstrap"]
+depends = ["bootstrap", "test:tools"]
 run = "node --test --test-isolation=none tests/*.test.ts"
 
 [tasks.lint]
 description = "Check GitHub Actions syntax and security"
 run = [
   "actionlint -config-file .github/actionlint.yaml .github/workflows/*.yml",
-  "zizmor --offline .github/workflows",
+  "zizmor --offline .github/workflows .github/actions",
+  "shellcheck -x -P .github/actions/lib .github/actions/*/*.sh",
 ]
 
 [tasks.dry-run]

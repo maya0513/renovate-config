@@ -1,15 +1,10 @@
 paths:
   .github/workflows/ci.yml:
     ignore:
-      # GitHub supports this exact-commit reference; actionlint does not yet.
-      # Remove after https://github.com/rhysd/actionlint/issues/711 is fixed.
-      - '^reusable workflow call "\$/\.github/workflows/dependency-artifacts\.yml" at "uses" is not following the format '
+      # GitHub supports exact-commit self references; actionlint does not yet.
+      - '^specifying action "\$/\.github/actions/(mise-pnpm|pnpm-outputs)"'
   .github/workflows/update.yml:
     ignore:
-      # GitHub supports this exact-commit reference; actionlint does not yet.
-      # Remove after https://github.com/rhysd/actionlint/issues/711 is fixed.
-      - '^reusable workflow call "\$/\.github/workflows/dependency-artifacts\.yml" at "uses" is not following the format '
-  .github/workflows/vite-plus.yml:
-    ignore:
-      # GitHub exact-commit self-reference; see actionlint issue 711 above.
-      - '^reusable workflow call "\$/\.github/workflows/dependency-artifacts\.yml" at "uses" is not following the format '
+      # Remove when actionlint supports GitHub self repository references.
+      - '^specifying action "\$/\.github/actions/(mise-pnpm|pnpm-outputs)"'
+      - '^reusable workflow call "\$/\.github/workflows/publish-pnpm-artifacts\.yml" at "uses" is not following the format '

@@ -2,7 +2,7 @@ import assert from 'node:assert/strict';
 import { readFileSync, symlinkSync } from 'node:fs';
 import { join } from 'node:path';
 import { test } from 'node:test';
-import { fixture, git, write } from './helpers/dependency-artifacts.ts';
+import { fixture, git, write } from './helpers/pnpm-artifacts.ts';
 
 const groups = [
   { lockfile: 'mise.lock', tools: ['conda:lua'], platforms: ['linux-x64', 'linux-arm64'], verify: 'locked' },
@@ -84,7 +84,7 @@ test('the publisher rejects unrelated files injected into the prepared patch', t
   write(f.repo, 'unrelated.txt', 'injected\n');
   git(f.repo, 'add', 'unrelated.txt');
   const patch = f.runScript('git diff --cached --binary --full-index');
-  write(f.runnerTemp, 'dependency-artifacts/changes.patch', patch);
+  write(f.runnerTemp, 'pnpm-artifacts/changes.patch', patch);
   assert.throws(() => f.commitPrepared());
   f.assertUnpublished();
 });
@@ -112,7 +112,13 @@ test('the publisher cannot hide an unrelated deletion inside an allowed rename',
   f.run('locks'); f.run('update');
   git(f.repo, 'mv', 'unrelated.txt', 'generated.txt');
   const patch = f.runScript('git diff --cached --binary --full-index');
-  write(f.runnerTemp, 'dependency-artifacts/changes.patch', patch);
-  assert.throws(() => f.commitPrepared({ POST_UPDATE_PATHS: 'generated.txt' }));
+  write(f.runnerTemp, 'pnpm-artifacts/changes.patch', patch);
+  const manifest = JSON.parse(readFileSync(join(f.runnerTemp, 'pnpm-artifacts/manifest.json'), 'utf8'));
+  manifest.postUpdatePaths = ['generated.txt'];
+  write(f.runnerTemp, 'pnpm-artifacts/manifest.json', JSON.stringify(manifest));
+  assert.throws(() => f.commitPrepared({ POST_UPDATE_PATHS: 'generated.txt' }), error => {
+    assert(error instanceof Error && 'stdout' in error);
+    assert.match(String(error.stdout), /disallowed path: unrelated.txt/); return true;
+  });
   f.assertUnpublished();
 });

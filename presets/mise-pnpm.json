@@ -1,6 +1,6 @@
 {
   "$schema": "https://docs.renovatebot.com/renovate-schema.json",
-  "description": "Group mise-managed Node and pnpm declarations; requires the shared dependency-artifacts workflow",
+  "description": "Group mise-managed Node and pnpm declarations; requires the mise-pnpm and pnpm-outputs actions",
   "mise": {
     "skipArtifactsUpdate": true,
     "lockFileMaintenance": {
