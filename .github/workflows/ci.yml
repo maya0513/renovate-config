@@ -25,13 +25,10 @@ jobs:
           cache: false
       - id: mise
         uses: $/.github/actions/mise-pnpm
-        with:
-          verify-only: "true"
       - id: outputs
         uses: $/.github/actions/pnpm-outputs
         with:
           mise-state: ${{ steps.mise.outputs.state }}
-          verify-only: "true"
   check:
     name: check
     runs-on: ubuntu-latest

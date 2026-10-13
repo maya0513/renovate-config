@@ -7,8 +7,7 @@ permissions:
   contents: read
 jobs:
   prepare:
-    if: github.event_name == 'push' && github.event.sender.id == 29139614 && startsWith(github.ref,
-      'refs/heads/renovate/')
+    if: github.event_name == 'push' && github.event.sender.id == 29139614 && startsWith(github.ref, 'refs/heads/renovate/')
     runs-on: ubuntu-latest
     timeout-minutes: 20
     concurrency:
@@ -26,6 +25,8 @@ jobs:
           cache: false
       - id: mise
         uses: $/.github/actions/mise-pnpm
+        with:
+          verify-only: "false"
       - id: outputs
         uses: $/.github/actions/pnpm-outputs
         with:

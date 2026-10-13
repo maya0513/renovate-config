@@ -15,7 +15,7 @@ Renovateが更新する依存を選び、利用先が生成部品を組み合わ
 
 | 責務 | 担当 |
 | --- | --- |
-| 更新・レビュー方針 | 共通default。npmは`update-lockfile`、major・runner・本リポジトリのaction／workflow更新は手動レビュー |
+| 更新・レビュー方針 | 共通default。npmは`update-lockfile`、major・runner・本リポジトリのaction／workflow更新は手動レビュー。本リポジトリの参照更新は同じグループ |
 | Node・pnpm宣言のグループ化 | [`mise-pnpm` preset](../presets/mise-pnpm.json)。miseのartifact生成・maintenanceとNode更新のartifact生成を停止 |
 | rootの派生依存の独立更新停止 | [`viteplus` preset](../presets/viteplus.json)。rootのcoverage・Vitest・Vite coreだけが対象。配下の独立プロジェクトは更新対象 |
 | mise lockfile・sidecarと実行環境 | [`mise-pnpm` action](../.github/actions/mise-pnpm/action.yml) |
@@ -35,29 +35,28 @@ pnpm更新時のnpm artifact生成はRenovateに残します。補助actionは�
 3. callerの準備ジョブにcheckout（`persist-credentials: false`）とmise-action（`install: false`）を用意し、上表の順で部品を呼びます。更新・検証には同じlock group、タスク、公開パスを渡します。
 4. 更新・検証の双方でCIを動かします。更新はMend Renovateのpushかつ`renovate/`ブランチに限定し、Appによる補助pushは検証として扱います。
 
-設定方針と実行時の強制：Node・pnpmの宣言一致は利用条件です。pnpmの実行バージョンは各installの`--pm-on-fail=error`で検査しますが、Node宣言との一致確認は利用先CIで行ってください。`pmOnFail: error`の設定はローカル実行も同じ方針に揃えるためのものです。共通処理ではCLIで常に指定するため、設定ファイルへの記載がないこと自体では失敗しません。
+宣言の整合検査：rootの`package.json`に完全バージョンの`engines.node`と`packageManager: "pnpm@x.y.z"`が必要です。miseの宣言、lockedで選ばれた版、実行ファイルとの一致を共通処理で確認します。欠落・範囲指定・不一致・未追跡lockfileはエラーで、修復しません。`packageManager`の標準的なintegrity suffixは保持します。具体的なバージョンと`@types/node`の制約は利用先が決めます。
+
+`pmOnFail: error`の設定はローカル実行も同じ方針に揃えるためのものです。共通処理ではCLIで常に指定するため、設定ファイルへの記載がないこと自体では失敗しません。
 
 Vite+構成：rootの`package.json`、`pnpm-workspace.yaml`、`pnpm-lock.yaml`が必要です。coverageはmajorのみ、または安定版の完全バージョンで宣言します。内蔵Vitestのmajorが変わる場合は互換性のレビューが必要です。曖昧なoverride、YAMLのflow mapping・anchor・aliasは書き換えずエラーにします。
 
 ## 利用先での組み合わせ
 
-以下は準備ジョブの主要ステップです。`env.VERIFY_ONLY`などの環境変数名とステップIDは例であり、固定ではありません。入力に値を直接指定しても構いません。`<SHA>`はすべて同じレビュー済み40桁SHAに置き換えます。`env.VERIFY_ONLY`は更新なら`false`、通常CIなら`true`にします。composite actionの入力は文字列です。
+以下は準備ジョブの主要ステップです。`env.LOCK_GROUPS`などの環境変数名とステップIDは例であり、固定ではありません。入力に値を直接指定しても構いません。`<SHA>`はすべて同じレビュー済み40桁SHAに置き換えます。通常CIではモード指定を省略します。更新callerだけが最初のmise部品に`verify-only: 'false'`を追加します。更新モードはMend Renovateのpushかつ`renovate/`ブランチでのみ使用できます。composite actionの入力は文字列です。
 
 ```yaml
 - id: mise
   uses: maya0513/renovate-config/.github/actions/mise-pnpm@<SHA>
   with:
-    verify-only: ${{ env.VERIFY_ONLY }}
-    lock-groups: ${{ env.LOCK_GROUPS }}
+    lock-groups: ${{ env.LOCK_GROUPS || '[]' }}
 - id: viteplus
   uses: maya0513/renovate-config/.github/actions/pnpm-viteplus@<SHA>
   with:
-    verify-only: ${{ env.VERIFY_ONLY }}
-    prepared-paths: ${{ steps.mise.outputs.artifact-paths }}
+    preparation-state: ${{ steps.mise.outputs.state }}
 - id: outputs
   uses: maya0513/renovate-config/.github/actions/pnpm-outputs@<SHA>
   with:
-    verify-only: ${{ env.VERIFY_ONLY }}
     mise-state: ${{ steps.mise.outputs.state }}
     viteplus-state: ${{ steps.viteplus.outputs.state }}
     post-update-task: ${{ env.POST_UPDATE_TASK }}
@@ -81,12 +80,13 @@ Vite+なし：`viteplus`ステップと`viteplus-state`入力を省きます。�
 
 | 部品 | 入力・出力 | 契約 |
 | --- | --- | --- |
-| 全生成・検証action | `verify-only`（既定`false`） | `true`／`false`だけを受け付ける。組み合わせた部品で一致させる |
+| mise準備 | `verify-only`（既定`true`） | 通常CIは省略。更新だけ`false`を明示し、イベント条件も検査 |
+| Vite+準備 | `verify-only`（省略可） | stateから継承。単独なら検証が既定。明示値がstateと違えばエラー |
 | mise準備 | `lock-groups`（既定`[]`） | 明示する場合、各lockfileの全ツールを重複なく指定する |
-| mise準備 | 出力`state`・`artifact-paths` | 同じジョブで後続部品に渡す。利用先で内容を編集しない |
-| Vite+準備 | `prepared-paths`（省略可） | 先行するmise生成物をdirty checkoutの許可対象にする |
+| mise準備 | 出力`state` | 同じジョブで後続部品に渡す。モードと準備済みファイルの情報を含み、利用先で編集しない |
+| Vite+準備 | `preparation-state`（省略可） | 先行部品のモードと準備済みファイルを引き継ぐ。miseのコマンドや設定形式には依存しない |
 | Vite+準備 | 出力`state` | 最終検証へ渡す。Vite+部品自体はmiseを必要としないが、今回の対応構成ではmiseを先に呼ぶ |
-| 最終検証 | `mise-state`・`viteplus-state` | 呼んだ部品の出力だけ渡す。同じリポジトリ・コミット・検証モードであることを確認 |
+| 最終検証 | `mise-state`・`viteplus-state` | 呼んだ部品の出力だけ渡す。モードはstateから決定し、リポジトリ・コミット・モードの一致を確認 |
 | 最終検証 | `post-update-task`・`post-update-paths`（既定空） | miseタスクで追加生成し、明示したパスだけを公開対象に加える |
 | 最終検証 | 出力`base`・`changed`・`artifact-id` | 全検証が成功した更新だけpayloadをupload。検証モードではuploadしない |
 
@@ -104,11 +104,22 @@ lock groupの例：
 
 最終検証：追加生成の後にmiseのlocked検証、同じ実行環境・オプションでのfrozen install、Vite+の宣言・依存グラフ検証を行います。Vite+はcoverageと内蔵Vitestの一致、一つのVitestインスタンス、Vite core alias、選択済みVite+と無関係な依存が変わっていないことを確認します。検証モードでは宣言・pnpm lockfileを修復しません。
 
+## 利用先に残る記述
+
+| 区分 | 利用先で記述すること |
+| --- | --- |
+| 部品の選択・接続 | mise、必要ならVite+、最終検証を同じ準備ジョブで順に呼び、stateと公開用出力を接続 |
+| 固有値 | 採用バージョン、lock group、生成タスク、生成物パス。更新・検証で同じ値を渡す |
+| 公開許可 | 別ジョブのApp認証と、公開する部品・追加パスを明示。生成ジョブの出力から許可を導かない |
+| 任意の命名 | workflow名、ステップID、環境変数名、Secret名 |
+
+更新・検証間の入力と、公開側の許可指定には重複が残ります。共通側は同じ準備処理内のstateと公開manifestを照合しますが、別実行間の入力一致は自動保証しません。参照更新はRenovateで同じグループにまとめ、手動編集時も全参照を同じレビュー済みSHAに揃えてください。SHA混在を実行時に検査する機能はありません。
+
 ## 認証と移行
 
 推奨名：Variable `DEPENDENCY_ARTIFACTS_APP_CLIENT_ID`、Secret `DEPENDENCY_ARTIFACTS_APP_PRIVATE_KEY`。既存Appのインストールを再利用でき、既存Secretの改名は不要です。Appの公開権限は対象リポジトリのContents-writeに限定します。通常の`GITHUB_TOKEN`はContents-readです。
 
-公開workflowは元SHAでcheckoutし、immutable artifact IDからpayloadを取得します。許可パス・通常ファイルであることを再検証してコミットした後にApp tokenを作り、元SHAを指定したleaseでpushします。移動・削除済みブランチは上書きしません。
+公開workflowは元SHAでcheckoutし、immutable artifact IDからpatchとデータ用manifestを取得します。manifestの元SHA・選択部品・追加公開パスを、公開側の明示入力と照合します。不一致はコミットとApp token作成前に拒否し、manifestから公開許可を増やすことはしません。許可パス・通常ファイルであることを再検証してコミットした後にApp tokenを作り、元SHAを指定したleaseでpushします。移動・削除済みブランチは上書きしません。
 
 旧名の互換ファイルはありません。旧preset参照を使う利用先を先に既存SHAへ固定してから、共通側の削除をmainへ入れてください。その後、新preset名と同じレビュー済みSHAの各部品へ移行します。利用先の移行・CI・App push後の最新SHA確認が済むまでは、[#3](https://github.com/maya0513/renovate-config/issues/3)全体の完了とは扱いません。
 

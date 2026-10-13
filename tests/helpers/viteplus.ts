@@ -19,7 +19,7 @@ export function fixture(t: TestContext, options: ViteplusOptions = {}) {
   const f = artifactFixture(t, {
     '.gitignore': 'node_modules/\n.cache/\n',
     'mise.lock': 'old lock\n',
-    'package.json': `${JSON.stringify({ type: 'module', devDependencies: { 'vite-plus': '1', '@vitest/coverage-v8': options.major ? '5' : options.exact ? '5.0.3' : options.declarations ? '5' : bundled, ...(options.unrelatedVersion ? { other: '^1.0.0' } : {}) } }, null, 2)}\n`,
+    'package.json': `${JSON.stringify({ type: 'module', engines: { node: process.versions.node }, packageManager: 'pnpm@12.10.1', devDependencies: { 'vite-plus': '1', '@vitest/coverage-v8': options.major ? '5' : options.exact ? '5.0.3' : options.declarations ? '5' : bundled, ...(options.unrelatedVersion ? { other: '^1.0.0' } : {}) } }, null, 2)}\n`,
     'pnpm-workspace.yaml': options.workspace ?? (options.declarations ? workspace : workspace.replace('vite-plus-core@1.0.0', 'vite-plus-core@1.0.1')),
     'pnpm-lock.yaml': `lockfileVersion: '9.0'\npackages:\n  vitest@${options.declarations ? '5.0.1' : bundled}:\n${options.duplicate ? '  vitest@5.0.9:\n' : ''}  coverage@${initialCoverage}:\n`,
   }, env);
@@ -46,6 +46,7 @@ export function fixture(t: TestContext, options: ViteplusOptions = {}) {
   writeFileSync(join(f.bin, 'pnpm'), `#!${process.execPath}
 import fs from 'node:fs';
 const args = process.argv.slice(2);
+if (args[0] === '--version') { console.log('12.10.1'); process.exit(0); }
 fs.appendFileSync(${JSON.stringify(pnpmLog)}, JSON.stringify(args) + '\\n');
 if (${Boolean(options.fail)}) process.exit(1);
 if (args[0] === 'update' || args.includes('--no-frozen-lockfile')) {

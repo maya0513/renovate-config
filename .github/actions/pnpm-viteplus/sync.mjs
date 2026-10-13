@@ -1,3 +1,4 @@
+import { checkMode, readPreparation } from '../lib/state.mjs';
 import assert from 'node:assert/strict';
 import { execFileSync, spawnSync } from 'node:child_process';
 import { lstatSync, readFileSync, realpathSync, writeFileSync } from 'node:fs';
@@ -129,13 +130,16 @@ const pnpm = (...args) => execFileSync('pnpm', [
 ], { stdio: 'inherit' });
 
 function synchronize() {
-  assert(['true', 'false'].includes(process.env.VERIFY_ONLY), 'verify-only must be true or false');
-  const allowed = Boolean(process.env.PREPARED_PATHS)
-    ? readFileSync(process.env.PREPARED_PATHS, 'utf8').split('\0').filter(Boolean).map(path => resolve(path))
-    : [];
+  const preceding = process.env.PREPARATION_STATE ? readPreparation(process.env.PREPARATION_STATE) : undefined;
+  const explicit = process.env.VERIFY_ONLY;
+  const mode = checkMode(explicit || preceding?.verifyOnly || 'true');
+  assert(!preceding || mode === preceding.verifyOnly, 'Explicit verify-only contradicts preparation state');
+  process.env.VERIFY_ONLY = mode;
+  const allowed = preceding?.preparedPaths
+    ? readFileSync(preceding.preparedPaths, 'utf8').split('\0').filter(Boolean).map(path => resolve(path)) : [];
   const dirty = execFileSync('git', ['diff', '--name-only', '-z'], { encoding: 'utf8' }) +
     execFileSync('git', ['ls-files', '--others', '--exclude-standard', '-z'], { encoding: 'utf8' });
-  assert(dirty.split('\0').filter(Boolean).every(path => isAllowedArtifact(path, allowed)), 'Start from a clean checkout except prepared mise artifacts');
+  assert(dirty.split('\0').filter(Boolean).every(path => isAllowedArtifact(path, allowed)), 'Start from a clean checkout except prepared artifacts');
   assert.equal(git('diff', '--cached', '--name-only'), '', 'Start without staged changes');
   for (const path of [...declarations, 'pnpm-lock.yaml']) {
     assert(lstatSync(path).isFile(), `${path} must be a regular file`);
@@ -153,7 +157,7 @@ function synchronize() {
   assert.match(bundled, /^\d+\.\d+\.\d+$/, 'Bundled Vitest must be an exact stable version');
   assert.equal(bundled.split('.')[0], coverage.split('.')[0], 'Vite+ changed its bundled Vitest major; review compatibility before updating');
   const state = {
-    base: git('rev-parse', 'HEAD'), root: git('rev-parse', '--show-toplevel'),
+    component: 'pnpm-viteplus', base: git('rev-parse', 'HEAD'), root: git('rev-parse', '--show-toplevel'),
     verifyOnly: process.env.VERIFY_ONLY, version: vp.version, bundled, unrelated: unrelated(project),
   };
 

@@ -436,6 +436,10 @@ test('GitHub Actions and reusable workflows are eligible for SHA pinning', async
   }));
   const result = await updates('github-actions', dependencies);
   assert.equal(result.length, 5);
+  const sharedRefs = result.filter(update => update.depName === 'maya0513/renovate-config');
+  assert.equal(new Set(sharedRefs.map(update => update.branchName)).size, 1);
+  assert(sharedRefs.every(update => update.groupName === 'Shared dependency automation'));
+  assert(result.filter(update => update.depName !== 'maya0513/renovate-config').every(update => update.branchName !== sharedRefs[0]!.branchName));
   for (const update of result) {
     const shared = update.depName === 'maya0513/renovate-config';
     assert.equal(update.pinDigests, true);

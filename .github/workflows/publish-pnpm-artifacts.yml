@@ -87,6 +87,16 @@ jobs:
           [[ -z "$(git status --porcelain)" ]]
           payload="$RUNNER_TEMP/pnpm-artifacts/changes.patch"
           [[ -f "$payload" && ! -L "$payload" ]]
+          manifest="$RUNNER_TEMP/pnpm-artifacts/manifest.json"
+          [[ -f "$manifest" && ! -L "$manifest" ]] || { echo '::error::A regular publishing manifest is required'; exit 1; }
+          jq -e --arg base "$BASE_SHA" --arg mise "$HAS_MISE" --arg viteplus "$HAS_VITEPLUS" --arg paths "$POST_UPDATE_PATHS" '
+            def output_paths:
+              split("\n") | map(rtrimstr("\r") | select(length > 0) | sub("^(\\./)+"; "") | sub("/+$"; "")) |
+              if all(.[]; length > 0 and startswith("/") == false and
+                  (split("/") | all(.[]; . != "..")) and . != "." and . != ".git" and startswith(".git/") == false)
+              then unique else error("Invalid publishing output paths") end;
+            . == {base: $base, components: ([if $mise == "true" then "mise-pnpm" else empty end, if $viteplus == "true" then "pnpm-viteplus" else empty end]), postUpdatePaths: ($paths | output_paths)}
+          ' "$manifest" > /dev/null || { echo '::error::Publishing manifest does not match explicit permissions'; exit 1; }
           allowed="$RUNNER_TEMP/publish-allowed"
           : > "$allowed"
           if [[ "$HAS_MISE" == true ]]; then

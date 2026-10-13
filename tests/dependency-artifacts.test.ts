@@ -32,8 +32,8 @@ test('verification is called on every CI event without App credentials and canno
   assert(!JSON.stringify(verification).includes('app-private-key'));
   const mise = verification.steps.find((step: { id?: string }) => step.id === 'mise');
   const outputs = verification.steps.find((step: { id?: string }) => step.id === 'outputs');
-  assert.equal(mise.with['verify-only'], 'true');
-  assert.equal(outputs.with['verify-only'], 'true');
+  assert.equal(mise.with?.['verify-only'], undefined);
+  assert.equal(outputs.with['verify-only'], undefined);
   assert(!JSON.stringify(prepareJob).includes('app-private-key'));
   assert.equal(pnpmWorkflow.jobs.publish.needs, 'prepare');
 });
@@ -78,12 +78,13 @@ for (const [description, files, overrides] of [
   });
 }
 
-test('a repository without tracked lockfiles needs no commit or mise command', (t) => {
+test('a repository without tracked lockfiles fails before any mise command', t => {
   const f = fixture(t, {});
-  f.update({ POST_UPDATE_TASK: 'generate', POST_UPDATE_PATHS: 'generated docs' });
-  f.assertUnpublished();
-  assert.equal(f.outputs().changed, 'false');
-  assert.equal(readFileSync(f.log, 'utf8'), '');
+  assert.throws(() => f.update(), error => {
+    assert(error instanceof Error && 'stdout' in error);
+    assert.match(String(error.stdout), /Generate and track initial mise lockfiles/); return true;
+  });
+  assert.equal(readFileSync(f.log, 'utf8'), ''); f.assertUnpublished(); f.assertNoPayload();
 });
 
 test('unchanged lockfiles do not create an empty commit', (t) => {
@@ -93,13 +94,13 @@ test('unchanged lockfiles do not create an empty commit', (t) => {
   assert.equal(f.outputs().changed, 'false');
 });
 
-test('untracked lockfiles are not regenerated and do not enable the post-update task', (t) => {
-  const f = fixture(t, {});
-  write(f.repo, 'mise.lock', 'untracked lock\n');
-  f.update({ POST_UPDATE_TASK: 'generate' });
-  assert.equal(readFileSync(f.log, 'utf8'), '');
-  assert.equal(readFileSync(join(f.repo, 'mise.lock'), 'utf8'), 'untracked lock\n');
-  f.assertUnpublished();
+test('an untracked lockfile fails without enabling generation', t => {
+  const f = fixture(t, {}); write(f.repo, 'mise.lock', 'untracked lock\n');
+  assert.throws(() => f.update(), error => {
+    assert(error instanceof Error && 'stdout' in error);
+    assert.match(String(error.stdout), /Generate and track initial mise lockfiles/); return true;
+  });
+  assert.equal(readFileSync(f.log, 'utf8'), ''); f.assertUnpublished(); f.assertNoPayload();
 });
 
 test('nested, local, and environment lockfiles select the corresponding mise config', (t) => {
@@ -259,7 +260,7 @@ for (const [name, script] of [
       const f = fixture(t, {
         'mise.lock': 'old\n', 'nested/mise.lock': 'old\n', 'nested/mise.toml': '[tools]\nnode = "24"\n',
         'mise.prod.lock': 'old\n', 'mise.prod.toml': '[tools]\nnode = "24"\n',
-        '.mise/locks/new/package.lock': 'native dependency lock\n', 'package.json': '{"private":true}\n',
+        '.mise/locks/new/package.lock': 'native dependency lock\n',
         'pnpm-workspace.yaml': 'pmOnFail: error\n',
       });
       assert.throws(() => f.update({
@@ -380,21 +381,21 @@ for (const value of ['yes', '1', '']) {
 for (const invalid of ['mode', 'base', 'root', 'missing', 'symlink', 'unselected'] as const) {
   test(`final component rejects ${invalid} preparation state before a generation task`, t => {
     const f = fixture(t);
-    const prepared = f.runComponent('mise-pnpm');
+    const prepared = f.runComponent('mise-pnpm', { 'verify-only': 'false' });
     const statePath = prepared.outputs.state!;
-    if (['base', 'root'].includes(invalid)) {
+    if (['mode', 'base', 'root'].includes(invalid)) {
       const state = JSON.parse(readFileSync(statePath, 'utf8'));
-      state[invalid] = 'different'; write(f.runnerTemp, 'mise-pnpm-state.json', JSON.stringify(state));
+      state[invalid === 'mode' ? 'verifyOnly' : invalid] = 'different'; write(f.runnerTemp, 'mise-pnpm-state.json', JSON.stringify(state));
     }
     if (invalid === 'missing') rmSync(statePath);
     if (invalid === 'symlink') { rmSync(statePath); symlinkSync(join(f.repo, 'mise.toml'), statePath); }
     const before = readFileSync(f.log, 'utf8');
     assert.throws(() => f.runComponent('pnpm-outputs', {
       'mise-state': invalid === 'unselected' ? '' : statePath,
-      'verify-only': invalid === 'mode' ? 'true' : 'false', 'post-update-task': 'generate',
+      'post-update-task': 'generate',
     }), error => {
-      assert(error instanceof Error && 'stdout' in error);
-      assert.match(String(error.stdout), invalid === 'unselected' ? /Select at least one/
+      assert(error instanceof Error && 'stderr' in error);
+      assert.match(String(error.stderr), invalid === 'unselected' ? /Select at least one/
         : ['mode', 'base', 'root'].includes(invalid) ? /same commit, repository and verify-only/ : /Invalid or missing preparation state/);
       return true;
     });

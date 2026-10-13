@@ -113,6 +113,12 @@ test('the publisher cannot hide an unrelated deletion inside an allowed rename',
   git(f.repo, 'mv', 'unrelated.txt', 'generated.txt');
   const patch = f.runScript('git diff --cached --binary --full-index');
   write(f.runnerTemp, 'pnpm-artifacts/changes.patch', patch);
-  assert.throws(() => f.commitPrepared({ POST_UPDATE_PATHS: 'generated.txt' }));
+  const manifest = JSON.parse(readFileSync(join(f.runnerTemp, 'pnpm-artifacts/manifest.json'), 'utf8'));
+  manifest.postUpdatePaths = ['generated.txt'];
+  write(f.runnerTemp, 'pnpm-artifacts/manifest.json', JSON.stringify(manifest));
+  assert.throws(() => f.commitPrepared({ POST_UPDATE_PATHS: 'generated.txt' }), error => {
+    assert(error instanceof Error && 'stdout' in error);
+    assert.match(String(error.stdout), /disallowed path: unrelated.txt/); return true;
+  });
   f.assertUnpublished();
 });

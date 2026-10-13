@@ -1,13 +1,12 @@
 name: Prepare pnpm-managed Vite+
-description: Synchronize Vite+ derived dependencies using Node and pnpm already on PATH. Does not install mise
-  or prepare mise locks.
+description: Synchronize Vite+ derived dependencies using Node and pnpm already on PATH. Does not install mise or prepare mise locks.
 inputs:
   verify-only:
     description: Reject mismatches without repairing declarations or lockfiles
     required: false
-    default: "false"
-  prepared-paths:
-    description: Optional artifact-paths output from an earlier preparation component
+    default: ""
+  preparation-state:
+    description: Optional preceding preparation state; inherit mode and prepared paths
     required: false
     default: ""
 outputs:
@@ -22,7 +21,7 @@ runs:
       env:
         ACTION_PATH: ${{ github.action_path }}
         VERIFY_ONLY: ${{ inputs['verify-only'] }}
-        PREPARED_PATHS: ${{ inputs['prepared-paths'] }}
+        PREPARATION_STATE: ${{ inputs['preparation-state'] }}
       run: |-
         set -euo pipefail
         node "$ACTION_PATH/sync.mjs"

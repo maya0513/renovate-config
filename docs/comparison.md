@@ -2,7 +2,7 @@
 
 [日本語](comparison.ja.md)
 
-Snapshot: 2026-10-12, Renovate 44.145.1. Includes inherited defaults; excludes consumer and bot-host overrides.
+Snapshot: 2026-10-13, Renovate 44.145.1. Includes inherited defaults; excludes consumer and bot-host overrides.
 Sources: this repository's [`default.json`](../default.json) and [jdx at `d574ac27`](https://github.com/jdx/renovate-config/blob/d574ac27d15201ebe7f30af8a9ab1bb90dd23bb0/default.json).
 
 ## Shared preset
@@ -20,7 +20,7 @@ The official [`config:best-practices`](https://docs.renovatebot.com/presets-conf
 | [Dependency Dashboard](https://docs.renovatebot.com/configuration-options/#dependencydashboard) | Enabled | Enabled | Disabled | Disabled |
 | [Clone submodules](https://docs.renovatebot.com/configuration-options/#clonesubmodules) | Disabled | Disabled | Enabled | Enabled |
 | [PR limits](https://docs.renovatebot.com/configuration-options/#prhourlylimit), hourly / concurrent | 2 / 10 | 2 / 10 | 10 / 10 | 10 / 10 |
-| Routine update groups | Curated package and monorepo groups | Same as `config:recommended` | npm, mise, GitHub Actions, Cargo, Go, Docker; others together; named jdx crates separately | Same as `config:recommended` |
+| Routine update groups | Curated package and monorepo groups | Same as `config:recommended` | npm, mise, GitHub Actions, Cargo, Go, Docker; others together; named jdx crates separately | `config:recommended` plus one group for this repository's action/workflow references |
 | `pin` updates | Standard grouping | Standard grouping | Not included in ecosystem grouping rules | Standard grouping |
 | Non-major automerge | Disabled | Disabled | Enabled | Enabled |
 | `0.x` minor automerge | Disabled | Disabled | Enabled | Enabled |
@@ -58,7 +58,7 @@ These components are installed separately from the presets. Sources: [jdx at the
 | mise | — | Generate locks | Generate locks and sidecars; `lock-groups` selects tools, platforms and verification |
 | Vite+ | — | — | Align coverage declarations, overrides and lockfile with bundled Vitest and Vite core |
 | Additional generation | — | Task and output paths | `post-update-task`, `post-update-paths`; dependency inputs must remain unchanged |
-| Verification | — | No dedicated mode | `verify-only: true`: mise differences or locked validation, frozen pnpm and Vite+ graph validation |
+| Verification | — | No dedicated mode | Verification by default, inherited through state; mise differences or locked validation, frozen pnpm and Vite+ graph validation |
 | App credentials | — | Optional; falls back to `GITHUB_TOKEN` | Publishing job only; never passed to dependency preparation or verification |
-| Update events | — | Check Mend sender ID | Caller selects update or verification; publisher also checks Mend, push and `renovate/` |
-| Publication | — | mise follow-up commit | One commit and push after final validation; allowlist and original-SHA lease enforced |
+| Update events | — | Check Mend sender ID | Only update callers set the initial component to `false`; preparation and publishing check Mend, push and `renovate/` |
+| Publication | — | mise follow-up commit | One commit and push after final validation; match manifest to explicit authorization, enforce allowlist and original-SHA lease |

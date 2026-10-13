@@ -16,19 +16,20 @@ for (const transition of ['node', 'pnpm', 'viteplus', 'node+viteplus', 'pnpm+vit
     const env = { ...process.env, ...registry.env };
     // Use the installed pnpm, rather than the command stub used in unit tests.
     const executable = execFileSync('which', ['pnpm'], { encoding: 'utf8' }).trim();
-    symlinkSync(executable, join(f.bin, 'pnpm'));
+    rmSync(join(f.bin, 'pnpm')); symlinkSync(executable, join(f.bin, 'pnpm'));
     const pnpm = (...args: string[]) => execFileSync(executable, [
       ...args, '--ignore-scripts', '--ignore-pnpmfile', '--pm-on-fail=error',
     ], { cwd: f.repo, env, encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'] });
     const project = {
       name: 'transition-fixture', private: true,
       packageManager: `pnpm@${registry.pnpmVersion}`,
-      engines: { node: `${process.versions.node.split('.')[0]}.0.0` },
+      engines: { node: process.versions.node },
       devDependencies: { 'vite-plus': '1.0.0', '@vitest/coverage-v8': '5.0.1', ordinary: '^1.0.0' },
     };
     write(f.repo, 'package.json', `${JSON.stringify(project, null, 2)}\n`);
     write(f.repo, 'pnpm-workspace.yaml', "pmOnFail: error\noverrides:\n  vite: npm:@voidzero-dev/vite-plus-core@1.0.0\n  vitest: 5.0.1\n");
     pnpm('install', '--no-frozen-lockfile');
+    write(f.repo, 'mise.toml', `[tools]\nnode = "${process.versions.node}"\npnpm = "${registry.pnpmVersion}"\n`);
     git(f.repo, 'add', '.'); git(f.repo, 'commit', '-m', 'initial synchronized graph');
     const initial = git(f.repo, 'rev-parse', 'HEAD');
     const before = readFileSync(join(f.repo, 'pnpm-lock.yaml'), 'utf8');
@@ -69,7 +70,7 @@ for (const transition of ['node', 'pnpm', 'viteplus', 'node+viteplus', 'pnpm+vit
     }
     git(f.repo, 'add', '.'); git(f.repo, 'commit', '--allow-empty', '-m', `selected ${transition} update`);
     git(f.repo, 'push');
-    f.update(registry.env);
+    f.update({ ...registry.env, TEST_PNPM_VERSION: registry.pnpmVersion });
     f.run('push', registry.env);
     f.update({ ...registry.env, VERIFY_ONLY: 'true', NO_CHANGE: '1' });
     pnpm('install', '--frozen-lockfile', '--offline');
@@ -95,16 +96,17 @@ for (const verifyOnly of [false, true]) {
       });
       const registry = await packageRegistry(t, f.root);
       const executable = execFileSync('which', ['pnpm'], { encoding: 'utf8' }).trim();
-      symlinkSync(executable, join(f.bin, 'pnpm'));
+      rmSync(join(f.bin, 'pnpm')); symlinkSync(executable, join(f.bin, 'pnpm'));
       write(f.repo, 'package.json', JSON.stringify({
-        name: 'final-validation-fixture', private: true, packageManager: `pnpm@${registry.pnpmVersion}`,
+        name: 'final-validation-fixture', private: true, engines: { node: process.versions.node }, packageManager: `pnpm@${registry.pnpmVersion}`,
         devDependencies: { 'vite-plus': '1.0.0', '@vitest/coverage-v8': '5.0.1' },
       }) + '\n');
       write(f.repo, 'pnpm-workspace.yaml', 'pmOnFail: error\noverrides:\n  vite: npm:@voidzero-dev/vite-plus-core@1.0.0\n  vitest: 5.0.1\n');
       execFileSync(executable, ['install', '--no-frozen-lockfile', '--ignore-scripts', '--ignore-pnpmfile', '--pm-on-fail=error'], {
         cwd: f.repo, env: { ...process.env, ...registry.env }, stdio: ['ignore', 'pipe', 'pipe'],
       });
-      git(f.repo, 'add', '.'); git(f.repo, 'commit', '-m', 'initial synchronized graph'); git(f.repo, 'push');
+      write(f.repo, 'mise.toml', `[tools]\nnode = "${process.versions.node}"\npnpm = "${registry.pnpmVersion}"\n`);
+    git(f.repo, 'add', '.'); git(f.repo, 'commit', '-m', 'initial synchronized graph'); git(f.repo, 'push');
       const candidate = git(f.repo, 'rev-parse', 'HEAD');
       f.run('locks', registry.env); f.run('tools', registry.env); if (viteplus) f.run('sync', registry.env);
 

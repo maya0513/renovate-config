@@ -1,11 +1,15 @@
 #!/usr/bin/env bash
 set -euo pipefail
-[[ "$VERIFY_ONLY" == true || "$VERIFY_ONLY" == false ]] || { echo "::error::verify-only must be true or false"; exit 1; }
+source "$ACTION_PATH/../lib/mode.sh"
+check_mode
+[[ -f package.json && ! -L package.json ]] || { echo "::error::Tracked root package.json is required"; exit 1; }
+git ls-files --error-unmatch -- package.json > /dev/null
 echo "base=$(git rev-parse HEAD)" >> "$GITHUB_OUTPUT"
 lockfiles="$RUNNER_TEMP/mise-lockfiles"
 artifacts="$RUNNER_TEMP/mise-lock-artifacts"
 : > "$lockfiles"
 git ls-files -z -- 'mise.lock' 'mise.*.lock' '**/mise.lock' '**/mise.*.lock' > "$lockfiles"
+[[ -s "$lockfiles" ]] || { echo "::error::Generate and track initial mise lockfiles before using mise-pnpm"; exit 1; }
 cp "$lockfiles" "$artifacts"
 root=$(git rev-parse --show-toplevel)
 while IFS= read -r -d '' lock; do
@@ -83,5 +87,5 @@ while IFS= read -r -d '' lock; do
     done < "$RUNNER_TEMP/current-groups"
   fi
 done < "$lockfiles"
-printf "state=%s\nartifact-paths=%s\n" "$RUNNER_TEMP/mise-pnpm-state.json" "$artifacts" >> "$GITHUB_OUTPUT"
-jq -n --arg base "$(git rev-parse HEAD)" --arg root "$root" --arg verify "$VERIFY_ONLY" '{base: $base, root: $root, verifyOnly: $verify}' > "$RUNNER_TEMP/mise-pnpm-state.json"
+printf "state=%s\n" "$RUNNER_TEMP/mise-pnpm-state.json" >> "$GITHUB_OUTPUT"
+jq -n --arg base "$(git rev-parse HEAD)" --arg root "$root" --arg verify "$VERIFY_ONLY" --arg paths "$artifacts" '{component: "mise-pnpm", base: $base, root: $root, verifyOnly: $verify, preparedPaths: $paths}' > "$RUNNER_TEMP/mise-pnpm-state.json"

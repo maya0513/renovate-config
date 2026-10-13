@@ -23,7 +23,7 @@ The preset follows this repository's `main` branch. No npm installation or relea
 
 See the [configuration comparison](docs/comparison.md) for update policies.
 
-The shared default includes npm `rangeStrategy: update-lockfile`. Runner changes and this repository's actions and reusable workflows require manual review.
+The shared default includes npm `rangeStrategy: update-lockfile`. Runner changes and this repository's actions and reusable workflows require manual review and shared references update together.
 
 | Configuration | Additional preset | Components composed by the consumer |
 | --- | --- | --- |

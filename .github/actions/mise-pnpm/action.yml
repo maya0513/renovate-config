@@ -4,7 +4,7 @@ inputs:
   verify-only:
     description: Validate without publishing; locked groups do not re-resolve
     required: false
-    default: "false"
+    default: "true"
   lock-groups:
     description: JSON lockfile, tools, platforms, verify groups
     required: false
@@ -16,9 +16,6 @@ outputs:
   state:
     description: Preparation state for pnpm-outputs
     value: ${{ steps.locks.outputs.state }}
-  artifact-paths:
-    description: Prepared paths allowed when composing with pnpm-viteplus
-    value: ${{ steps.locks.outputs.artifact-paths }}
 runs:
   using: composite
   steps:

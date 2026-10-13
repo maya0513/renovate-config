@@ -15,7 +15,7 @@ Updates call `publish-pnpm-artifacts.yml` in a separate job. Individual preparat
 
 | Responsibility | Owner |
 | --- | --- |
-| Update and review policy | Shared default: npm `update-lockfile`; manual review for majors, runners and this repository's actions/workflows |
+| Update and review policy | Shared default: npm `update-lockfile`; manual review for majors, runners and this repository's actions/workflows; group shared references together |
 | Group Node and pnpm declarations | [`mise-pnpm` preset](../presets/mise-pnpm.json): disable mise artifact generation/maintenance and Node artifact generation |
 | Disable independent root derived-dependency updates | [`viteplus` preset](../presets/viteplus.json): root coverage, Vitest and Vite core only; nested independent projects remain eligible |
 | mise locks, sidecars and executable preparation | [`mise-pnpm` action](../.github/actions/mise-pnpm/action.yml) |
@@ -35,29 +35,28 @@ Run preparation on Linux, such as Ubuntu, with Bash, GNU coreutils, jq, Git and 
 3. Prepare checkout (`persist-credentials: false`) and mise-action (`install: false`), then invoke the components in order. Pass identical lock groups, generation task and output paths to update and verification callers.
 4. Run CI for both updates and verification. Only Mend Renovate pushes to `renovate/` branches use update mode; follow-up App pushes use verification.
 
-Policy versus runtime enforcement: matching Node/pnpm declarations are a usage requirement. Each install checks the pnpm executable with `--pm-on-fail=error`; consumers must check Node declaration agreement in their CI. Setting `pmOnFail: error` also aligns local commands with this policy. The shared components always supply the CLI flag, so a missing setting alone does not fail them.
+Declaration validation: root `package.json` must declare exact stable `engines.node` and `packageManager: "pnpm@x.y.z"`. Shared preparation checks mise declarations, locked versions and actual executables against these values. Missing declarations, ranges, mismatches and untracked locks fail without repair. Standard package-manager integrity suffixes are preserved. Consumers still choose versions and `@types/node` constraints.
+
+Setting `pmOnFail: error` aligns local commands with this policy. Shared components always supply the CLI flag, so a missing setting alone does not fail them.
 
 Vite+ prerequisites: tracked root `package.json`, `pnpm-workspace.yaml` and `pnpm-lock.yaml`. Declare coverage as a major or an exact stable version. A bundled Vitest major change requires compatibility review. Ambiguous overrides and YAML flow mappings, anchors or aliases fail rather than being rewritten.
 
 ## Consumer composition
 
-These are the main preparation steps. Environment names such as `env.VERIFY_ONLY` and step IDs are examples, not fixed names; input values may also be specified directly. Replace every `<SHA>` with the same reviewed 40-character commit SHA. Set `env.VERIFY_ONLY` to `false` for updates and `true` for ordinary CI. Composite action inputs are strings.
+These are the main preparation steps. Environment names such as `env.LOCK_GROUPS` and step IDs are examples, not fixed names; input values may also be specified directly. Replace every `<SHA>` with the same reviewed 40-character commit SHA. Omit the mode for ordinary CI. Only update callers add `verify-only: 'false'` to the initial mise component. Update mode requires a Mend Renovate push to a `renovate/` branch. Composite action inputs are strings.
 
 ```yaml
 - id: mise
   uses: maya0513/renovate-config/.github/actions/mise-pnpm@<SHA>
   with:
-    verify-only: ${{ env.VERIFY_ONLY }}
-    lock-groups: ${{ env.LOCK_GROUPS }}
+    lock-groups: ${{ env.LOCK_GROUPS || '[]' }}
 - id: viteplus
   uses: maya0513/renovate-config/.github/actions/pnpm-viteplus@<SHA>
   with:
-    verify-only: ${{ env.VERIFY_ONLY }}
-    prepared-paths: ${{ steps.mise.outputs.artifact-paths }}
+    preparation-state: ${{ steps.mise.outputs.state }}
 - id: outputs
   uses: maya0513/renovate-config/.github/actions/pnpm-outputs@<SHA>
   with:
-    verify-only: ${{ env.VERIFY_ONLY }}
     mise-state: ${{ steps.mise.outputs.state }}
     viteplus-state: ${{ steps.viteplus.outputs.state }}
     post-update-task: ${{ env.POST_UPDATE_TASK }}
@@ -81,12 +80,13 @@ The publishing job uses `needs: prepare` and `uses: maya0513/renovate-config/.gi
 
 | Component | Input/output | Contract |
 | --- | --- | --- |
-| All preparation/validation actions | `verify-only` (default `false`) | Accept only `true` or `false`; use the same mode throughout composition |
+| mise preparation | `verify-only` (default `true`) | Omit for ordinary CI; explicitly select `false` for updates, with event validation |
+| Vite+ preparation | `verify-only` (optional) | Inherit from state; default to verification when independent. Reject contradictory explicit values |
 | mise preparation | `lock-groups` (default `[]`) | Explicit groups must cover every configured tool once for each lockfile |
-| mise preparation | Outputs `state`, `artifact-paths` | Pass to later components in the same job; do not edit |
-| Vite+ preparation | `prepared-paths` (optional) | Allow already prepared mise artifacts in the otherwise clean checkout |
+| mise preparation | Output `state` | Pass to later components in the same job; includes mode and prepared paths; do not edit |
+| Vite+ preparation | `preparation-state` (optional) | Inherit mode and prepared paths without depending on mise commands or configuration syntax |
 | Vite+ preparation | Output `state` | Pass to final validation. The component does not require mise itself; supported consumers prepare mise first |
-| Final validation | `mise-state`, `viteplus-state` | Pass only outputs of selected components; repository, commit and verification mode must match |
+| Final validation | `mise-state`, `viteplus-state` | Pass selected component outputs; infer mode from state and check repository, commit and mode agreement |
 | Final validation | `post-update-task`, `post-update-paths` (default empty) | Run a mise task for additional outputs; add only explicit paths to publication |
 | Final validation | Outputs `base`, `changed`, `artifact-id` | Upload only validated update payloads; verification never uploads |
 
@@ -104,11 +104,22 @@ Additional tasks must not change dependency declarations, effective mise configu
 
 Final validation runs after additional generation: locked mise validation, frozen installation with the same executables/options, then Vite+ declaration and graph validation. Vite+ checks coverage against bundled Vitest, one Vitest instance, the Vite core alias, unchanged selected Vite+ and unchanged unrelated dependency versions. Verification never repairs declarations or pnpm lockfiles.
 
+## What remains in the consumer
+
+| Category | Consumer responsibility |
+| --- | --- |
+| Selection and connections | Invoke mise, optional Vite+, and final validation in one preparation job; connect state and publishing outputs |
+| Repository-specific values | Adopted versions, lock groups, tasks and output paths; use identical values for updates and verification |
+| Publication authorization | Pass App credentials only to the separate job; explicitly allow components and additional paths, independently of preparation outputs |
+| Optional naming | Workflow names, step IDs, environment names and Secret names |
+
+Some duplication remains between update/verification inputs and independent publishing permissions. Shared components check state within preparation and compare publication manifests; they do not guarantee matching inputs across separate runs. Renovate groups shared reference updates; manual edits must also keep all references on the same reviewed SHA. There is no runtime check for mixed implementation SHAs.
+
 ## Authentication and migration
 
 Recommended names: Variable `DEPENDENCY_ARTIFACTS_APP_CLIENT_ID`, Secret `DEPENDENCY_ARTIFACTS_APP_PRIVATE_KEY`. Reuse an existing App installation; existing Secrets need not be renamed. Limit App publication to Contents-write for the target repository. Ordinary `GITHUB_TOKEN` access is Contents-read.
 
-The publisher checks out the original SHA and downloads the immutable artifact ID. It validates allowed paths and regular files, commits, then creates the App token and pushes with an original-SHA lease. Moved or deleted branches are never overwritten.
+The publisher checks out the original SHA and downloads the patch and data manifest by immutable artifact ID. It compares manifest base, selected components and additional output paths with its explicit inputs before committing or creating an App token. The manifest never expands publication permissions. It validates allowed paths and regular files, commits, then creates the App token and pushes with an original-SHA lease. Moved or deleted branches are never overwritten.
 
 There are no old-name compatibility files. Pin consumers' old preset references to an existing SHA before merging the shared deletion. Then migrate to the new preset name and components at the same reviewed SHA. [Issue #3](https://github.com/maya0513/renovate-config/issues/3) remains incomplete until consumer migration, full CI and latest-SHA CI after App publication have been confirmed.
 

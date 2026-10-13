@@ -52,6 +52,16 @@ lock=mise
 if [[ -n "\${MISE_ENV:-}" ]]; then lock+=".$MISE_ENV"; fi
 if [[ " $* " == *' --local '* ]]; then lock+=.local; fi
 lock+=.lock
+if [[ "$1" == ls ]]; then
+  tool="\${*: -1}"
+  requested=$(awk -F '"' -v tool="$tool" '$1 == tool " = " {print $2}' "$TEST_REPO/mise.toml" | head -n1)
+  case "$tool" in
+    node) actual=$("$TEST_NODE_HOME/bin/node" --version); actual=\${TEST_LOCKED_NODE_VERSION:-\${actual#v}}; install_path="$TEST_NODE_HOME" ;;
+    pnpm) actual=\${TEST_LOCKED_PNPM_VERSION:-\${TEST_PNPM_VERSION:-12.10.1}}; install_path="$TEST_BIN" ;;
+  esac
+  jq -n --arg request "$requested" --arg version "$actual" --arg path "$install_path" '[{active:true, installed:true, requested_version:$request, version:$version, install_path:$path}]'
+  exit 0
+fi
 if [[ "$1" == where ]]; then
   case "$2" in
     node|node@*) printf '%s\\n' "$TEST_NODE_HOME" ;;
@@ -184,7 +194,8 @@ export function fixture(t: TestContext, files: Record<string, string> = { 'mise.
   git(repo, 'init', '-b', 'renovate/test');
   git(repo, 'config', 'user.name', 'Test User');
   git(repo, 'config', 'user.email', 'test@example.invalid');
-  write(repo, 'mise.toml', '[tools]\nnode = "24"\n');
+  write(repo, 'mise.toml', `[tools]\nnode = "${process.versions.node}"\npnpm = "12.10.1"\n`);
+  write(repo, 'package.json', JSON.stringify({ engines: { node: process.versions.node }, packageManager: 'pnpm@12.10.1' }) + '\n');
   for (const [path, content] of Object.entries(files)) write(repo, path, content);
   git(repo, 'add', '.');
   git(repo, 'commit', '-m', 'initial fixture');
@@ -193,7 +204,7 @@ export function fixture(t: TestContext, files: Record<string, string> = { 'mise.
   const base = git(repo, 'rev-parse', 'HEAD');
   writeFileSync(join(bin, 'mise'), fakeMise, { mode: 0o755 });
   const fallback = join(root, 'fallback'); mkdirSync(fallback);
-  writeFileSync(join(fallback, 'pnpm'), '#!/bin/sh\nexit 0\n', { mode: 0o755 });
+  writeFileSync(join(bin, 'pnpm'), '#!/bin/sh\nif [ "$1" = --version ]; then echo 12.10.1; fi\n', { mode: 0o755 });
   const log = join(root, 'mise.log');
   writeFileSync(log, '');
   const output = join(runnerTemp, 'update.output');
@@ -214,12 +225,16 @@ export function fixture(t: TestContext, files: Record<string, string> = { 'mise.
     HAS_VITEPLUS: 'false',
     LOCK_GROUPS: '[]',
     GITHUB_SHA: base,
+    GITHUB_EVENT_NAME: 'push', GITHUB_REF: 'refs/heads/renovate/test',
+    GITHUB_EVENT_PATH: join(root, 'event.json'),
     GITHUB_PATH: join(runnerTemp, 'path'),
     GITHUB_ENV: join(runnerTemp, 'env'),
     MISE_STATE: join(runnerTemp, 'mise-pnpm-state.json'),
     PREPARED_PATHS: join(runnerTemp, 'mise-lock-artifacts'),
     ...defaults,
   };
+
+  write(root, 'event.json', JSON.stringify({ sender: { id: 29139614 } }));
 
   function outputs(): Record<string, string> {
     return readOutputs(output);
@@ -258,7 +273,7 @@ export function fixture(t: TestContext, files: Record<string, string> = { 'mise.
       writeFileSync(env.GITHUB_PATH!, '');
       writeFileSync(env.GITHUB_ENV!, '');
     }
-    return runScript(step.run, overrides);
+    return runScript(step.run, id === 'sync' ? { PREPARATION_STATE: existsSync(env.MISE_STATE!) ? env.MISE_STATE : '', ...overrides } : overrides);
   }
 
   let publication = 0;
@@ -280,6 +295,7 @@ export function fixture(t: TestContext, files: Record<string, string> = { 'mise.
   function runComponent(name: string, values: Record<string, string> = {}, overrides: NodeJS.ProcessEnv = {}) {
     const directory = new URL(`../../.github/actions/${name}/`, import.meta.url);
     const action = parse(readFileSync(new URL('action.yml', directory), 'utf8'));
+    for (const key of Object.keys(values)) assert(key in action.inputs, `Unknown input ${name}.${key}`);
     const inputs: Record<string, string> = Object.fromEntries(Object.entries(action.inputs).map(([key, value]) => [key, values[key] ?? (value as { default: string }).default]));
     const steps: Record<string, { outputs: Record<string, string> }> = {};
     const expand = (value: string) => value.replace(/\$\{\{\s*(.*?)\s*\}\}/g, (_match, expression: string) => {
@@ -312,10 +328,10 @@ export function fixture(t: TestContext, files: Record<string, string> = { 'mise.
     const verifyOnly = overrides.VERIFY_ONLY ?? env.VERIFY_ONLY!;
     const mise = runComponent('mise-pnpm', { 'verify-only': verifyOnly, 'lock-groups': overrides.LOCK_GROUPS ?? env.LOCK_GROUPS! }, overrides);
     const viteplus = (overrides.HAS_VITEPLUS ?? env.HAS_VITEPLUS) === 'true'
-      ? runComponent('pnpm-viteplus', { 'verify-only': verifyOnly, 'prepared-paths': mise.outputs['artifact-paths']! }, overrides)
+      ? runComponent('pnpm-viteplus', { 'preparation-state': mise.outputs.state! }, overrides)
       : undefined;
     return runComponent('pnpm-outputs', {
-      'verify-only': verifyOnly, 'mise-state': mise.outputs.state!, 'viteplus-state': viteplus?.outputs.state ?? '',
+      'mise-state': mise.outputs.state!, 'viteplus-state': viteplus?.outputs.state ?? '',
       'post-update-task': overrides.POST_UPDATE_TASK ?? env.POST_UPDATE_TASK!,
       'post-update-paths': overrides.POST_UPDATE_PATHS ?? env.POST_UPDATE_PATHS!,
     }, overrides).result;

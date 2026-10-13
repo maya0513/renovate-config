@@ -23,7 +23,7 @@ presetは本リポジトリの`main`ブランチを参照します。npmでの�
 
 更新方針は[設定の比較](docs/comparison.ja.md)を参照してください。
 
-共通defaultにはnpmの`rangeStrategy: update-lockfile`を含みます。runner変更と本リポジトリのaction・再利用workflow更新は手動レビュー対象です。
+共通defaultにはnpmの`rangeStrategy: update-lockfile`を含みます。runner変更と本リポジトリのaction・再利用workflow更新は手動レビュー対象で、共通参照は同じグループで更新します。
 
 | 構成 | 追加するpreset | 利用先で組み合わせる部品 |
 | --- | --- | --- |

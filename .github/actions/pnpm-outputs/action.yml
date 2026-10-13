@@ -1,11 +1,6 @@
 name: Validate and collect pnpm dependency outputs
-description: Run additional generation, validate the composed dependency state, and collect one publishing
-  payload. No App credentials.
+description: Run additional generation, validate the composed dependency state, and collect one publishing payload. No App credentials.
 inputs:
-  verify-only:
-    description: Fail on generated differences; never upload a publishing payload
-    required: false
-    default: "false"
   mise-state:
     description: State output from mise-pnpm
     required: false
@@ -39,10 +34,9 @@ runs:
       shell: bash
       env:
         ACTION_PATH: ${{ github.action_path }}
-        VERIFY_ONLY: ${{ inputs['verify-only'] }}
         MISE_STATE: ${{ inputs['mise-state'] }}
         VITEPLUS_STATE: ${{ inputs['viteplus-state'] }}
-      run: bash "$ACTION_PATH/validate-state.sh"
+      run: node "$ACTION_PATH/validate-state.mjs"
     - id: base
       shell: bash
       run: printf "base=%s\n" "$(git rev-parse HEAD)" >> "$GITHUB_OUTPUT"
@@ -77,14 +71,13 @@ runs:
       shell: bash
       env:
         ACTION_PATH: ${{ github.action_path }}
-        VERIFY_ONLY: ${{ inputs['verify-only'] }}
         POST_UPDATE_PATHS: ${{ inputs['post-update-paths'] }}
       run: bash "$ACTION_PATH/stage.sh"
     - id: upload
       uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
-      if: inputs['verify-only'] != 'true' && steps.stage.outputs.changed == 'true'
+      if: steps.state.outputs['verify-only'] == 'false' && steps.stage.outputs.changed == 'true'
       with:
         name: pnpm-artifacts-${{ github.run_id }}-${{ github.run_attempt }}
-        path: ${{ runner.temp }}/pnpm-artifacts/changes.patch
+        path: ${{ runner.temp }}/pnpm-artifacts/
         if-no-files-found: error
         retention-days: 1

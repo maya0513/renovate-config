@@ -47,4 +47,7 @@ if [[ "$VERIFY_ONLY" == true ]]; then
 fi
 mkdir -p "$RUNNER_TEMP/pnpm-artifacts"
 git diff --cached --binary --full-index > "$RUNNER_TEMP/pnpm-artifacts/changes.patch"
+jq -n -L "$ACTION_PATH/../lib" --arg base "$PREPARATION_BASE" --arg mise "$HAS_MISE" --arg viteplus "$HAS_VITEPLUS" \
+  --arg paths "$POST_UPDATE_PATHS" 'include "paths"; {base: $base, components: ([if $mise == "true" then "mise-pnpm" else empty end, if $viteplus == "true" then "pnpm-viteplus" else empty end]), postUpdatePaths: ($paths | output_paths)}' \
+  > "$RUNNER_TEMP/pnpm-artifacts/manifest.json"
 echo "changed=true" >> "$GITHUB_OUTPUT"

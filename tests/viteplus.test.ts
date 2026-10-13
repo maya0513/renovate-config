@@ -10,7 +10,7 @@ test('Vite+ preparation is independent of mise and publishing credentials', () =
   const action = parse(readFileSync(new URL('../.github/actions/pnpm-viteplus/action.yml', import.meta.url), 'utf8'));
   assert(!JSON.stringify(action).includes('mise install'));
   assert(!JSON.stringify(action).includes('app-private-key'));
-  assert.equal(action.inputs['verify-only'].default, 'false');
+  assert.equal(action.inputs['verify-only'].default, '');
   assert(!JSON.stringify(prepareJob).includes('app-private-key'));
   assert(!JSON.stringify(publishJob).includes('pnpm install'));
   const token = publishJob.steps.find((step: { id?: string }) => step.id === 'app-token') as any;
@@ -190,7 +190,7 @@ test('Vite+ component uses prepared pnpm without calling mise', t => {
   f.assertUnpublished(); f.assertNoPayload();
 });
 
-for (const value of ['yes', '1', '']) {
+for (const value of ['yes', '1']) {
   test(`Vite+ component rejects invalid verify-only ${JSON.stringify(value)}`, t => {
     const f = fixture(t, { aligned: true });
     assert.throws(() => f.runComponent('pnpm-viteplus', { 'verify-only': value }), /verify-only must be true or false/);

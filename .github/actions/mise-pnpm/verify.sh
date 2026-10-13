@@ -7,3 +7,4 @@ while IFS= read -r -d '' lock; do
   mise_for_lock "$lock" install --locked --dry-run
   collect_sidecars "$lock"
 done < "$lockfiles"
+bash "$ACTION_PATH/../mise-pnpm/tools.sh" --verify

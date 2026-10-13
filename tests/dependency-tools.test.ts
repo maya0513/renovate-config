@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import { execFileSync } from 'node:child_process';
-import { readFileSync, symlinkSync } from 'node:fs';
+import { readFileSync, rmSync, symlinkSync } from 'node:fs';
 import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { test } from 'node:test';
@@ -41,7 +41,7 @@ for (const viteplus of [false, true]) {
       write(f.repo, 'pnpm-workspace.yaml', 'pmOnFail: error\n' + (viteplus ? 'overrides:\n  vite: npm:@voidzero-dev/vite-plus-core@1.0.0\n  vitest: 5.0.1\n' : ''));
       install(previousNode, previousPnpm, '--no-frozen-lockfile');
       git(f.repo, 'add', '.'); git(f.repo, 'commit', '-m', 'baseline with previous executables');
-      project.packageManager = `pnpm@${selectedPnpm.version}`; project.engines.node = selectedNode.version;
+      project.packageManager = `pnpm@${selectedPnpm.version}` + (!viteplus && transition === 'node' ? `+sha512.${'a'.repeat(128)}` : ''); project.engines.node = selectedNode.version;
       if (viteplus && transition !== 'node') project.devDependencies['vite-plus'] = '1.0.1';
       write(f.repo, 'package.json', JSON.stringify(project, null, 2) + '\n');
       write(f.repo, 'mise.toml', `[tools]\nnode = "${selectedNode.version}"\npnpm = "${selectedPnpm.version}"\n`);
@@ -56,13 +56,14 @@ for (const viteplus of [false, true]) {
         install(selectedNode, selectedPnpm, '--lockfile-only', '--no-frozen-lockfile');
       }
       git(f.repo, 'add', '.'); git(f.repo, 'commit', '-m', `selected ${transition}`); git(f.repo, 'push');
-      symlinkSync(join(selectedPnpm.install_path, 'pnpm'), join(f.bin, 'pnpm'));
-      const selected = { ...registry.env, TEST_NODE_HOME: selectedNode.install_path };
+      rmSync(join(f.bin, 'pnpm')); symlinkSync(join(selectedPnpm.install_path, 'pnpm'), join(f.bin, 'pnpm'));
+      const selected = { ...registry.env, TEST_NODE_HOME: selectedNode.install_path, TEST_PNPM_VERSION: selectedPnpm.version };
       f.update(selected); f.run('push', selected);
       assert.equal(f.runScript('node --version', selected).trim(), `v${selectedNode.version}`);
       assert.equal(f.runScript('pnpm --version', selected).trim(), selectedPnpm.version);
       f.update({ ...selected, VERIFY_ONLY: 'true', NO_CHANGE: '1' });
       assert.equal(f.outputs().changed, 'false');
+      assert.equal(JSON.parse(readFileSync(join(f.repo, 'package.json'), 'utf8')).packageManager, project.packageManager);
       install(selectedNode, selectedPnpm, '--frozen-lockfile', '--offline');
       assert.equal(readFileSync(join(f.repo, 'node_modules/ordinary/package.json'), 'utf8').includes('"1.0.0"'), true);
       if (viteplus) {

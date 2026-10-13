@@ -2,7 +2,7 @@
 
 [English](comparison.md)
 
-確認時点：2026-10-12・Renovate 44.145.1。継承される標準値を含み、利用先・Bot運営側の上書きは含みません。
+確認時点：2026-10-13・Renovate 44.145.1。継承される標準値を含み、利用先・Bot運営側の上書きは含みません。
 参照元：本リポジトリの[`default.json`](../default.json)、jdxの[`d574ac27`時点の設定](https://github.com/jdx/renovate-config/blob/d574ac27d15201ebe7f30af8a9ab1bb90dd23bb0/default.json)。
 
 ## 共通preset
@@ -20,7 +20,7 @@
 | [Dependency Dashboard](https://docs.renovatebot.com/configuration-options/#dependencydashboard) | 有効 | 有効 | 無効 | 無効 |
 | [submoduleの取得](https://docs.renovatebot.com/configuration-options/#clonesubmodules) | 無効 | 無効 | 有効 | 有効 |
 | [PR上限](https://docs.renovatebot.com/configuration-options/#prhourlylimit)（毎時／同時） | 2件／10件 | 2件／10件 | 10件／10件 | 10件／10件 |
-| 通常更新のグループ | 既知の関連パッケージ・monorepo | `config:recommended`と同じ | npm・mise・GitHub Actions・Cargo・Go・Docker別。その他は共通。指定されたjdx cratesは専用グループ | `config:recommended`と同じ |
+| 通常更新のグループ | 既知の関連パッケージ・monorepo | `config:recommended`と同じ | npm・mise・GitHub Actions・Cargo・Go・Docker別。その他は共通。指定されたjdx cratesは専用グループ | `config:recommended`＋本リポジトリのaction・workflow参照を1グループ |
 | `pin`更新 | 標準のグループ分け | 標準のグループ分け | 技術別グループの条件に含まない | 標準のグループ分け |
 | non-majorの自動マージ | 無効 | 無効 | 有効 | 有効 |
 | `0.x` minorの自動マージ | 無効 | 無効 | 有効 | 有効 |
@@ -58,7 +58,7 @@ presetとは別に導入する処理の比較です。参照元：[jdxの同じ�
 | mise | — | lockfile生成 | lockfile・sidecar生成。`lock-groups`でツール・OS・検証方法を指定 |
 | Vite+ | — | — | 内蔵Vitest・Vite coreにcoverage宣言・override・lockfileを同期 |
 | 追加生成 | — | taskと公開パスを入力 | `post-update-task`・`post-update-paths`。依存入力の変更は禁止 |
-| 検証 | — | 専用モードなし | `verify-only: true`。miseは差分またはlocked検証、pnpmはfrozen、Vite+はグラフも検証 |
+| 検証 | — | 専用モードなし | 検証が既定。後続部品はstateから継承。miseは差分またはlocked、pnpmはfrozen、Vite+はグラフも検証 |
 | App認証 | — | 任意。未指定時は`GITHUB_TOKEN` | 公開ジョブだけに必要。生成・検証には渡さない |
-| 更新イベント | — | Mendのsender IDを確認 | callerが更新／検証を選択。公開workflowでもMend・push・`renovate/`を確認 |
-| 公開 | — | miseの補助コミット | 全生成物を最終検証後に1コミット・1push。許可パスと元SHAのleaseを確認 |
+| 更新イベント | — | Mendのsender IDを確認 | 更新callerだけが最初の部品に`false`を指定。生成と公開の双方でMend・push・`renovate/`を確認 |
+| 公開 | — | miseの補助コミット | 最終検証後に1コミット・1push。manifestを公開許可と照合し、許可パスと元SHAのleaseを確認 |
