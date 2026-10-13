@@ -28,16 +28,20 @@ Renovate retains native npm artifact generation for pnpm updates. Companion acti
 
 ## Prerequisites
 
+Run preparation on Linux, such as Ubuntu, with Bash, GNU coreutils, jq, Git and mise. Lock-group target platforms are distinct from the runner performing generation.
+
 1. Generate and track initial mise locks, sidecars and the pnpm lockfile. Declare matching exact Node/pnpm versions in mise and `package.json`; set `pmOnFail: error` in `pnpm-workspace.yaml`.
 2. Extend the shared default and configuration-specific presets. Presets do not invoke actions.
 3. Prepare checkout (`persist-credentials: false`) and mise-action (`install: false`), then invoke the components in order. Pass identical lock groups, generation task and output paths to update and verification callers.
 4. Run CI for both updates and verification. Only Mend Renovate pushes to `renovate/` branches use update mode; follow-up App pushes use verification.
 
+Policy versus runtime enforcement: matching Node/pnpm declarations are a usage requirement. Each install checks the pnpm executable with `--pm-on-fail=error`; consumers must check Node declaration agreement in their CI. Setting `pmOnFail: error` also aligns local commands with this policy. The shared components always supply the CLI flag, so a missing setting alone does not fail them.
+
 Vite+ prerequisites: tracked root `package.json`, `pnpm-workspace.yaml` and `pnpm-lock.yaml`. Declare coverage as a major or an exact stable version. A bundled Vitest major change requires compatibility review. Ambiguous overrides and YAML flow mappings, anchors or aliases fail rather than being rewritten.
 
 ## Consumer composition
 
-These are the main preparation steps. Replace every `<SHA>` with the same reviewed 40-character commit SHA. Set `env.VERIFY_ONLY` to `false` for updates and `true` for ordinary CI. Composite action inputs are strings.
+These are the main preparation steps. Environment names such as `env.VERIFY_ONLY` and step IDs are examples, not fixed names; input values may also be specified directly. Replace every `<SHA>` with the same reviewed 40-character commit SHA. Set `env.VERIFY_ONLY` to `false` for updates and `true` for ordinary CI. Composite action inputs are strings.
 
 ```yaml
 - id: mise

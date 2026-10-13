@@ -28,16 +28,20 @@ pnpm更新時のnpm artifact生成はRenovateに残します。補助actionは�
 
 ## 導入条件
 
+準備ジョブはUbuntuなどのLinux環境で実行します。Bash・GNU coreutils・jq・Gitとmiseが必要です。lock groupの対象OSと、生成処理を実行するrunnerのOSは別です。
+
 1. 初回のmise lockfile・sidecar・pnpm lockfileを生成し、追跡対象にします。Node・pnpmの完全バージョンをmiseと`package.json`で一致させ、`pnpm-workspace.yaml`に`pmOnFail: error`を設定します。
 2. `extends`に共通defaultと構成に合うpresetを追加します。presetだけではactionは動きません。
 3. callerの準備ジョブにcheckout（`persist-credentials: false`）とmise-action（`install: false`）を用意し、上表の順で部品を呼びます。更新・検証には同じlock group、タスク、公開パスを渡します。
 4. 更新・検証の双方でCIを動かします。更新はMend Renovateのpushかつ`renovate/`ブランチに限定し、Appによる補助pushは検証として扱います。
 
+設定方針と実行時の強制：Node・pnpmの宣言一致は利用条件です。pnpmの実行バージョンは各installの`--pm-on-fail=error`で検査しますが、Node宣言との一致確認は利用先CIで行ってください。`pmOnFail: error`の設定はローカル実行も同じ方針に揃えるためのものです。共通処理ではCLIで常に指定するため、設定ファイルへの記載がないこと自体では失敗しません。
+
 Vite+構成：rootの`package.json`、`pnpm-workspace.yaml`、`pnpm-lock.yaml`が必要です。coverageはmajorのみ、または安定版の完全バージョンで宣言します。内蔵Vitestのmajorが変わる場合は互換性のレビューが必要です。曖昧なoverride、YAMLのflow mapping・anchor・aliasは書き換えずエラーにします。
 
 ## 利用先での組み合わせ
 
-以下は準備ジョブの主要ステップです。`<SHA>`はすべて同じレビュー済み40桁SHAに置き換えます。`env.VERIFY_ONLY`は更新なら`false`、通常CIなら`true`にします。composite actionの入力は文字列です。
+以下は準備ジョブの主要ステップです。`env.VERIFY_ONLY`などの環境変数名とステップIDは例であり、固定ではありません。入力に値を直接指定しても構いません。`<SHA>`はすべて同じレビュー済み40桁SHAに置き換えます。`env.VERIFY_ONLY`は更新なら`false`、通常CIなら`true`にします。composite actionの入力は文字列です。
 
 ```yaml
 - id: mise
