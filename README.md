@@ -29,6 +29,9 @@ The shared default includes npm `rangeStrategy: update-lockfile`. Runner changes
 | --- | --- | --- |
 | mise-managed Node and pnpm | [`presets/mise-pnpm.json`](presets/mise-pnpm.json) | `mise-pnpm` → `pnpm-outputs` |
 | Above + pnpm-managed Vite+ | Above + [`presets/viteplus.json`](presets/viteplus.json) | `mise-pnpm` → `pnpm-viteplus` → `pnpm-outputs` |
+| Consumer-prepared Node/pnpm + pnpm-managed Vite+ | [`presets/viteplus.json`](presets/viteplus.json) | Prepare Node/pnpm → `pnpm-viteplus` → `pnpm-outputs` |
+
+The Vite+ component does not require mise. Consumers can provision Node/pnpm through Nix or another method, but the complete flow has not been verified in a Nix environment. The optional `post-update-task` input runs mise tasks only.
 
 Preparation and verification use composite actions. Updates publish the validated result through `publish-pnpm-artifacts.yml` in a separate job. Presets do not invoke these components: prepare tracked lockfiles and both update and verification callers first. Renovate retains native npm artifact generation for pnpm updates.
 

@@ -29,6 +29,9 @@ presetは本リポジトリの`main`ブランチを参照します。npmでの�
 | --- | --- | --- |
 | mise管理のNode・pnpm | [`presets/mise-pnpm.json`](presets/mise-pnpm.json) | `mise-pnpm` → `pnpm-outputs` |
 | 上記＋pnpm管理のVite+ | 上記＋[`presets/viteplus.json`](presets/viteplus.json) | `mise-pnpm` → `pnpm-viteplus` → `pnpm-outputs` |
+| 利用先で準備したNode・pnpm＋pnpm管理のVite+ | [`presets/viteplus.json`](presets/viteplus.json) | Node・pnpmの準備 → `pnpm-viteplus` → `pnpm-outputs` |
+
+Vite+部品はmiseを必要としません。NixなどによるNode・pnpmの準備も利用先が担当できますが、Nix実環境での一連の動作は未検証です。追加生成入力`post-update-task`はmiseタスク専用です。
 
 生成・検証部品はcomposite actionです。更新時だけ、別ジョブの`publish-pnpm-artifacts.yml`で検証済みの結果を公開します。presetだけではこれらは動きません。追跡済みlockfileと更新・検証callerを用意してから導入してください。pnpm更新時のnpm artifact生成はRenovateに残します。
 
