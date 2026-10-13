@@ -1,8 +1,9 @@
 import assert from 'node:assert/strict';
 import { execFileSync } from 'node:child_process';
-import { mkdtempSync, mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdtempSync, mkdirSync, readFileSync, rmSync, symlinkSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
+import { runInNewContext } from 'node:vm';
 import type { TestContext } from 'node:test';
 import { parse } from 'yaml';
 
@@ -12,6 +13,7 @@ interface WorkflowStep {
   env?: Record<string, string>;
   run?: string;
   uses?: string;
+  with?: Record<string, string>;
 }
 
 interface WorkflowJob {
@@ -24,19 +26,21 @@ export function readWorkflow(name: string) {
   return parse(readFileSync(new URL(`../../.github/workflows/${name}.yml`, import.meta.url), 'utf8'));
 }
 
-export const dependencyArtifactsWorkflow = readWorkflow('dependency-artifacts');
+export const pnpmWorkflow = readWorkflow('update');
+export const prepareJob = pnpmWorkflow.jobs.prepare as WorkflowJob;
+export const publishJob = readWorkflow('publish-pnpm-artifacts').jobs.publish as WorkflowJob;
 
-function readJob(name: string): WorkflowJob {
-  const job = dependencyArtifactsWorkflow.jobs[name] as WorkflowJob | undefined;
-  assert(job, `The reusable workflow must define the ${name} job`);
-  return job;
+export function componentSteps(name: string): WorkflowStep[] {
+  const directory = new URL(`../../.github/actions/${name}/`, import.meta.url);
+  const action = parse(readFileSync(new URL('action.yml', directory), 'utf8'));
+  return action.runs.steps.map((step: WorkflowStep) => ({
+    ...step,
+    run: step.run ? `export ACTION_PATH=${JSON.stringify(directory.pathname)}\n${step.run}` : undefined,
+  }));
 }
 
-export const prepareJob = readJob('prepare');
-export const publishJob = readJob('publish');
-
 function workflowStep(id: string): WorkflowStep {
-  const step = [...prepareJob.steps, ...publishJob.steps].find((step) => step.id === id);
+  const step = [...componentSteps('mise-pnpm'), ...componentSteps('pnpm-viteplus'), ...componentSteps('pnpm-outputs'), ...publishJob.steps].find(step => step.id === id);
   assert(step, `Workflow step ${id} must exist`);
   return step;
 }
@@ -48,11 +52,23 @@ lock=mise
 if [[ -n "\${MISE_ENV:-}" ]]; then lock+=".$MISE_ENV"; fi
 if [[ " $* " == *' --local '* ]]; then lock+=.local; fi
 lock+=.lock
+if [[ "$1" == where ]]; then
+  case "$2" in
+    node|node@*) printf '%s\\n' "$TEST_NODE_HOME" ;;
+    pnpm|pnpm@*) printf '%s\\n' "$TEST_BIN" ;;
+    *) exit 13 ;;
+  esac
+  exit 0
+fi
 if [[ "$1" == config ]]; then
+  if [[ -n "\${CONFIG_MISE:-}" ]]; then exec "$CONFIG_MISE" "$@"; fi
   config=\"\${lock%.lock}.toml\"
   config_tools=\${CONFIG_TOOLS:-}
   if [[ -z "$config_tools" ]]; then config_tools='["node"]'; fi
-  jq -n --arg path "$PWD/$config" --argjson tools "$config_tools" '[{path: $path, tools: $tools}]'
+  jq -n --arg path "$PWD/$config" --argjson tools "$config_tools" '[{path: $path, tools: $tools}]' > "$RUNNER_TEMP/fake-config.json"
+  if [[ -f "$TEST_REPO/mise.local.toml" ]]; then
+    jq --arg path "$TEST_REPO/mise.local.toml" '. + [{path: $path, tools: []}]' "$RUNNER_TEMP/fake-config.json"
+  else cat "$RUNNER_TEMP/fake-config.json"; fi
   exit 0
 fi
 case "$PWD" in
@@ -87,6 +103,7 @@ if [[ "$1" == run ]]; then
   [[ "\${MISE_SAFE:-}" == 0 ]]
   [[ "$#" == 3 && "$2" == -- && "$3" == "$POST_UPDATE_TASK" ]]
   if [[ "\${FAIL_TASK:-0}" == 1 ]]; then exit 10; fi
+  if [[ -n "\${TASK_SCRIPT:-}" ]]; then bash -c "$TASK_SCRIPT"; exit 0; fi
   if [[ "\${TASK_NO_CHANGE:-0}" == 1 ]]; then exit 0; fi
   mkdir -p 'generated docs'
   printf 'updated reference\\n' > 'generated docs/reference.txt'
@@ -160,6 +177,9 @@ export function fixture(t: TestContext, files: Record<string, string> = { 'mise.
   mkdirSync(runnerTemp);
   mkdirSync(repo);
   mkdirSync(bin);
+  const nodeHome = join(root, 'selected-node');
+  mkdirSync(join(nodeHome, 'bin'), { recursive: true });
+  symlinkSync(process.execPath, join(nodeHome, 'bin', 'node'));
   git(root, 'init', '--bare', remote);
   git(repo, 'init', '-b', 'renovate/test');
   git(repo, 'config', 'user.name', 'Test User');
@@ -172,26 +192,32 @@ export function fixture(t: TestContext, files: Record<string, string> = { 'mise.
   git(repo, 'push', '-u', 'origin', 'renovate/test');
   const base = git(repo, 'rev-parse', 'HEAD');
   writeFileSync(join(bin, 'mise'), fakeMise, { mode: 0o755 });
+  const fallback = join(root, 'fallback'); mkdirSync(fallback);
+  writeFileSync(join(fallback, 'pnpm'), '#!/bin/sh\nexit 0\n', { mode: 0o755 });
   const log = join(root, 'mise.log');
   writeFileSync(log, '');
   const output = join(runnerTemp, 'update.output');
   writeFileSync(output, '');
   const env: NodeJS.ProcessEnv = {
     ...gitEnvironment,
-    PATH: `${bin}:${process.env.PATH}`,
+    PATH: `${bin}:${fallback}:${process.env.PATH}`,
     ...prepareJob.env,
     TEST_LOG: log,
     TEST_REPO: repo,
+    TEST_BIN: bin,
+    TEST_NODE_HOME: nodeHome,
     RUNNER_TEMP: runnerTemp,
     POST_UPDATE_TASK: '',
     POST_UPDATE_PATHS: '',
     VERIFY_ONLY: 'false',
-    MISE_ENABLED: 'true',
-    SYNC_VITE_PLUS: 'false',
-    SYNC_DECLARATIONS: 'false',
+    HAS_MISE: 'true',
+    HAS_VITEPLUS: 'false',
     LOCK_GROUPS: '[]',
     GITHUB_SHA: base,
     GITHUB_PATH: join(runnerTemp, 'path'),
+    GITHUB_ENV: join(runnerTemp, 'env'),
+    MISE_STATE: join(runnerTemp, 'mise-pnpm-state.json'),
+    PREPARED_PATHS: join(runnerTemp, 'mise-lock-artifacts'),
     ...defaults,
   };
 
@@ -200,18 +226,38 @@ export function fixture(t: TestContext, files: Record<string, string> = { 'mise.
   }
 
   function runScript(script: string, overrides: NodeJS.ProcessEnv = {}): string {
+    const exportedEnv = existsSync(env.GITHUB_ENV!) ? readOutputs(env.GITHUB_ENV!) : {};
+    const exportedPath = env.GITHUB_PATH!;
+    const paths = existsSync(exportedPath) ? readFileSync(exportedPath, 'utf8').split('\n').filter(Boolean).reverse() : [];
     return execFileSync('bash', ['-c', script], {
       cwd: repo,
-      env: { ...env, BASE_SHA: outputs().base, BRANCH: 'renovate/test', ...overrides, GITHUB_OUTPUT: output },
+      env: {
+        ...env, ...exportedEnv, BASE_SHA: outputs().base, BRANCH: 'renovate/test', ...overrides,
+        PATH: [...paths, overrides.PATH ?? env.PATH].join(':'), GITHUB_OUTPUT: output,
+      },
       encoding: 'utf8',
       stdio: ['ignore', 'pipe', 'pipe'],
     });
   }
 
   function run(id: string, overrides: NodeJS.ProcessEnv = {}): string {
+    if (id === 'update') {
+      const hasViteplus = (overrides.HAS_VITEPLUS ?? env.HAS_VITEPLUS) === 'true';
+      const state = { ...overrides, VITEPLUS_STATE: hasViteplus ? join(runnerTemp, 'viteplus-state.json') : '' };
+      let result = '';
+      for (const step of componentSteps('pnpm-outputs')) {
+        if (!step.run || (step.id === 'graph' && !hasViteplus)) continue;
+        result += runScript(step.run, state);
+      }
+      return result;
+    }
     const step = workflowStep(id);
     assert(step.run, `Workflow step ${id} must define a run script`);
-    if (id === 'locks') writeFileSync(output, '');
+    if (id === 'locks') {
+      writeFileSync(output, '');
+      writeFileSync(env.GITHUB_PATH!, '');
+      writeFileSync(env.GITHUB_ENV!, '');
+    }
     return runScript(step.run, overrides);
   }
 
@@ -229,10 +275,50 @@ export function fixture(t: TestContext, files: Record<string, string> = { 'mise.
     git(repo, 'reset', '--mixed', 'FETCH_HEAD');
     return publisher;
   }
+  // Execute the component's real step order, inputs, conditions and environment
+  // exports. Only the remote artifact service is outside this local runner.
+  function runComponent(name: string, values: Record<string, string> = {}, overrides: NodeJS.ProcessEnv = {}) {
+    const directory = new URL(`../../.github/actions/${name}/`, import.meta.url);
+    const action = parse(readFileSync(new URL('action.yml', directory), 'utf8'));
+    const inputs: Record<string, string> = Object.fromEntries(Object.entries(action.inputs).map(([key, value]) => [key, values[key] ?? (value as { default: string }).default]));
+    const steps: Record<string, { outputs: Record<string, string> }> = {};
+    const expand = (value: string) => value.replace(/\$\{\{\s*(.*?)\s*\}\}/g, (_match, expression: string) => {
+      if (expression === 'github.action_path') return directory.pathname;
+      if (expression === 'github.token') return '';
+      const input = /^inputs\['([^']+)'\]$/.exec(expression);
+      if (input) return inputs[input[1]!] ?? '';
+      const output = /^steps\.([\w-]+)\.outputs\.([\w-]+)$/.exec(expression);
+      if (output) return steps[output[1]!]?.outputs[output[2]!] ?? '';
+      throw new Error(`Unsupported component expression: ${expression}`);
+    });
+    let result = '';
+    for (const step of action.runs.steps as WorkflowStep[]) {
+      if (step.if && !runInNewContext(step.if, { inputs, steps })) continue;
+      if (!step.run) continue;
+      const start = readFileSync(output, 'utf8').length;
+      const resolvedEnv = Object.fromEntries(Object.entries(step.env ?? {}).map(([key, value]) => [key, expand(value)]));
+      result += runScript(step.run, { ...overrides, ...resolvedEnv });
+      const emitted = readFileSync(output, 'utf8').slice(start).trim().split('\n').filter(Boolean);
+      if (step.id) steps[step.id] = { outputs: Object.fromEntries(emitted.map(line => {
+        const split = line.indexOf('='); return [line.slice(0, split), line.slice(split + 1)];
+      })) };
+    }
+    const returned = Object.fromEntries(Object.entries(action.outputs).map(([key, value]) => [key, expand((value as { value: string }).value)]));
+    return { result, outputs: returned };
+  }
+
   function prepare(overrides: NodeJS.ProcessEnv = {}) {
-    run('locks', overrides);
-    if ((overrides.SYNC_VITE_PLUS ?? env.SYNC_VITE_PLUS) === 'true') run('sync', overrides);
-    return run('update', overrides);
+    writeFileSync(output, ''); writeFileSync(env.GITHUB_PATH!, ''); writeFileSync(env.GITHUB_ENV!, '');
+    const verifyOnly = overrides.VERIFY_ONLY ?? env.VERIFY_ONLY!;
+    const mise = runComponent('mise-pnpm', { 'verify-only': verifyOnly, 'lock-groups': overrides.LOCK_GROUPS ?? env.LOCK_GROUPS! }, overrides);
+    const viteplus = (overrides.HAS_VITEPLUS ?? env.HAS_VITEPLUS) === 'true'
+      ? runComponent('pnpm-viteplus', { 'verify-only': verifyOnly, 'prepared-paths': mise.outputs['artifact-paths']! }, overrides)
+      : undefined;
+    return runComponent('pnpm-outputs', {
+      'verify-only': verifyOnly, 'mise-state': mise.outputs.state!, 'viteplus-state': viteplus?.outputs.state ?? '',
+      'post-update-task': overrides.POST_UPDATE_TASK ?? env.POST_UPDATE_TASK!,
+      'post-update-paths': overrides.POST_UPDATE_PATHS ?? env.POST_UPDATE_PATHS!,
+    }, overrides).result;
   }
 
   function update(overrides: NodeJS.ProcessEnv = {}) {
@@ -246,5 +332,10 @@ export function fixture(t: TestContext, files: Record<string, string> = { 'mise.
     assert.equal(git(root, '--git-dir', remote, 'rev-parse', 'refs/heads/renovate/test'), base);
   }
 
-  return { root, repo, remote, bin, log, base, run, runScript, outputs, commitPrepared, prepare, update, assertUnpublished, runnerTemp };
+  function assertNoPayload(): void {
+    assert.notEqual(outputs().changed, 'true');
+    assert(!existsSync(join(runnerTemp, 'pnpm-artifacts/changes.patch')));
+  }
+
+  return { root, repo, remote, bin, log, base, run, runComponent, runScript, outputs, commitPrepared, prepare, update, assertUnpublished, assertNoPayload, runnerTemp };
 }

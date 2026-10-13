@@ -1,0 +1,166 @@
+name: Publish validated pnpm artifacts
+on:
+  workflow_call:
+    inputs:
+      base:
+        description: Original consumer commit SHA
+        required: false
+        type: string
+        default: ""
+      changed:
+        description: Whether preparation generated a validated payload
+        required: false
+        type: string
+        default: "false"
+      artifact-id:
+        description: Immutable artifact ID from pnpm-outputs
+        required: false
+        type: string
+        default: ""
+      mise:
+        description: Allow mise lockfiles and sidecars in the payload
+        required: false
+        type: boolean
+        default: true
+      viteplus:
+        description: Allow root Vite+ declarations and pnpm lockfile in the payload
+        required: false
+        type: boolean
+        default: false
+      post-update-paths:
+        description: Same newline-separated additional output paths used during preparation
+        required: false
+        type: string
+        default: ""
+      app-client-id:
+        description: GitHub App client ID
+        required: false
+        type: string
+        default: ""
+    secrets:
+      app-private-key:
+        description: GitHub App private key for publication
+        required: false
+permissions:
+  contents: read
+jobs:
+  publish:
+    if: github.event_name == 'push' && github.event.sender.id == 29139614 && startsWith(github.ref, 'refs/heads/renovate/')
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    env:
+      HAS_MISE: ${{ inputs.mise }}
+      HAS_VITEPLUS: ${{ inputs.viteplus }}
+      POST_UPDATE_PATHS: ${{ inputs['post-update-paths'] }}
+    steps:
+      - name: Require App credentials for updates
+        id: credentials
+        env:
+          APP_CLIENT_ID: ${{ inputs.app-client-id }}
+          APP_PRIVATE_KEY: ${{ secrets.app-private-key }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          if [[ -z "$APP_CLIENT_ID" || -z "$APP_PRIVATE_KEY" ]]; then
+            echo "::error::Update mode requires app-client-id and app-private-key"
+            exit 1
+          fi
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ inputs.base }}
+          persist-credentials: false
+        if: inputs.changed == 'true'
+      - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        with:
+          artifact-ids: ${{ inputs.artifact-id }}
+          path: ${{ runner.temp }}/pnpm-artifacts
+        if: inputs.changed == 'true'
+      - name: Validate the payload and commit only allowed artifacts
+        id: commit
+        if: inputs.changed == 'true'
+        env:
+          BASE_SHA: ${{ inputs.base }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          [[ "$BASE_SHA" =~ ^[a-f0-9]{40}$ && "$(git rev-parse HEAD)" == "$BASE_SHA" ]]
+          [[ -z "$(git status --porcelain)" ]]
+          payload="$RUNNER_TEMP/pnpm-artifacts/changes.patch"
+          [[ -f "$payload" && ! -L "$payload" ]]
+          allowed="$RUNNER_TEMP/publish-allowed"
+          : > "$allowed"
+          if [[ "$HAS_MISE" == true ]]; then
+            git ls-files -z -- 'mise.lock' 'mise.*.lock' '**/mise.lock' '**/mise.*.lock' > "$RUNNER_TEMP/publish-locks"
+            while IFS= read -r -d '' lock; do
+              printf '%s\0' "$lock" >> "$allowed"
+              directory=$(dirname "$lock")
+              case "$directory" in
+                .mise|*/.mise|.config/mise|*/.config/mise) sidecars="$directory/locks" ;;
+                .config|*/.config) sidecars="$directory/mise/locks" ;;
+                *) sidecars="$directory/.mise/locks" ;;
+              esac
+              if [[ "${lock##*/}" != mise.lock ]]; then sidecars+="/${lock##*/}"; sidecars=${sidecars%.lock}; fi
+              printf '%s/\0' "${sidecars#./}" >> "$allowed"
+            done < "$RUNNER_TEMP/publish-locks"
+          fi
+          if [[ "$HAS_VITEPLUS" == true ]]; then
+            printf 'pnpm-lock.yaml\0' >> "$allowed"
+            printf 'package.json\0pnpm-workspace.yaml\0' >> "$allowed"
+          fi
+          while IFS= read -r path || [[ -n "$path" ]]; do
+            path=${path%$'\r'}
+            [[ -n "$path" ]] || continue
+            while [[ "$path" == ./* ]]; do path=${path#./}; done
+            case "$path" in ''|/*|.|..|../*|*/../*|*/..|.git|.git/*) exit 1 ;; esac
+            printf '%s\0%s/\0' "$path" "${path%/}" >> "$allowed"
+          done <<< "$POST_UPDATE_PATHS"
+          git -c core.hooksPath=/dev/null apply --index --binary -- "$payload"
+          git diff --cached --no-renames --name-only -z > "$RUNNER_TEMP/publish-changes"
+          while IFS= read -r -d '' path; do
+            accepted=false
+            while IFS= read -r -d '' permit; do
+              if [[ "$permit" == */ ]]; then
+                if [[ "$path" == "$permit"* ]]; then accepted=true; fi
+              elif [[ "$path" == "$permit" ]]; then accepted=true
+              fi
+            done < "$allowed"
+            if [[ "$accepted" != true || "$path" == .git/* || "$path" == /* ]]; then
+              echo "::error::Prepared payload changes a disallowed path: $path"
+              exit 1
+            fi
+          done < "$RUNNER_TEMP/publish-changes"
+          # Dependency artifacts must be ordinary files, never symlinks or submodules.
+          if git diff --cached --raw | grep -Eq '^:[0-9]{6} (120000|160000) '; then
+            echo '::error::Prepared artifacts must be regular files'
+            exit 1
+          fi
+          git diff --cached --check
+          git -c core.hooksPath=/dev/null -c commit.gpgsign=false \
+            -c user.name='github-actions[bot]' \
+            -c user.email='41898282+github-actions[bot]@users.noreply.github.com' \
+            commit -m 'chore(deps): regenerate dependency artifacts'
+      - name: Create repository-scoped App token
+        id: app-token
+        uses: actions/create-github-app-token@bcd2ba49218906704ab6c1aa796996da409d3eb1 # v3.2.0
+        with:
+          client-id: ${{ inputs.app-client-id }}
+          private-key: ${{ secrets.app-private-key }}
+          owner: ${{ github.repository_owner }}
+          repositories: ${{ github.event.repository.name }}
+          permission-contents: write
+        if: inputs.changed == 'true'
+      - name: Push only if the Renovate branch has not moved
+        id: push
+        env:
+          GH_TOKEN: ${{ steps.app-token.outputs.token }}
+          BASE_SHA: ${{ inputs.base }}
+          BRANCH: ${{ github.ref_name }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          [[ "$BASE_SHA" =~ ^[a-f0-9]{40}$ && "$BRANCH" == renovate/* ]]
+          git -c core.hooksPath=/dev/null -c credential.helper= \
+            -c 'credential.helper=!gh auth git-credential' \
+            push --force-with-lease="refs/heads/${BRANCH}:${BASE_SHA}" \
+            origin "HEAD:refs/heads/${BRANCH}"
+        if: inputs.changed == 'true'

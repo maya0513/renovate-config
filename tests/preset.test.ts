@@ -61,7 +61,7 @@ test('Vite+ opt-in disables independently selected derived packages, including w
   const pkg = await extractNpm(JSON.stringify({ devDependencies: { 'vite-plus': '^1.0.0', '@vitest/coverage-v8': '5.0.1', unrelated: '^1.0.0' } }), 'package.json', {});
   const workspace = await extractPnpmWorkspaceFile(parse("overrides:\n  'vite@*': 'npm:@voidzero-dev/vite-plus-core@1.0.0'\n  'vitest@*': '5.0.1'\n"), 'pnpm-workspace.yaml');
   assert(pkg && workspace);
-  const optConfig = mergeChildConfig(config, optional('vite-plus'));
+  const optConfig = mergeChildConfig(config, optional('viteplus'));
   for (const type of ['minor', 'major'] as const) {
     const decorate = (dependency: PackageDependency): PackageDependency => ({
       ...dependency,
@@ -99,9 +99,9 @@ function dep(name: string, updateType: UpdateType = 'minor', currentVersion = '1
   };
 }
 
-async function updates(manager: string, dependencies: PackageDependency[], overrides: RenovateConfig = {}) {
+async function updates(manager: string, dependencies: PackageDependency[], overrides: RenovateConfig = {}, packageFile = 'fixtures/dependencies') {
   const result = await flattenUpdates({ ...config, ...overrides, semanticCommits: 'disabled' }, {
-    [manager]: [{ packageFile: 'fixtures/dependencies', deps: dependencies }],
+    [manager]: [{ packageFile, deps: dependencies }],
   });
   return result.filter((update) => !update.isLockFileMaintenance);
 }
@@ -313,10 +313,22 @@ test('mise-pnpm is opt-in and leaves npm artifact generation and maintenance ena
 test('local optional presets compose without bundling Vite+ into mise-pnpm', async () => {
   const reference = 'local>maya0513/renovate-config';
   const miseOnly = await resolveLocalConfig(preset, { extends: [reference, `${reference}//presets/mise-pnpm`] });
-  const both = await resolveLocalConfig(preset, { extends: [reference, `${reference}//presets/mise-pnpm`, `${reference}//presets/vite-plus`] });
+  const both = await resolveLocalConfig(preset, { extends: [reference, `${reference}//presets/mise-pnpm`, `${reference}//presets/viteplus`] });
   const dependencies = [dep('vite-plus'), dep('vitest'), dep('@vitest/coverage-v8'), dep('@voidzero-dev/vite-plus-core'), dep('other')];
-  assert.equal((await updates('npm', dependencies, miseOnly)).length, 5);
-  assert.deepEqual((await updates('npm', dependencies, both)).map(update => update.depName).sort(), ['other', 'vite-plus']);
+  assert.equal((await updates('npm', dependencies, miseOnly, 'package.json')).length, 5);
+  assert.deepEqual((await updates('npm', dependencies, both, 'package.json')).map(update => update.depName).sort(), ['other', 'vite-plus']);
+});
+
+test('Vite+ leaves independent nested projects eligible for updates and manual majors', async () => {
+  const selected = mergeChildConfig(config, optional('viteplus'));
+  for (const type of ['minor', 'major'] as const) {
+    const dependencies = ['vitest', '@vitest/coverage-v8', '@voidzero-dev/vite-plus-core'].map(name => dep(name, type));
+    for (const packageFile of ['apps/independent/package.json', 'apps/independent/pnpm-workspace.yaml']) {
+      const result = await updates('npm', dependencies, selected, packageFile);
+      assert.deepEqual(result.map(update => update.depName).sort(), dependencies.map(dependency => dependency.depName).sort());
+      assert(result.every(update => update.automerge === (type === 'minor')));
+    }
+  }
 });
 
 test('repository mise tools use exact patch versions matching the lockfile', async () => {
@@ -406,15 +418,14 @@ test('local dry-run respects ignored presets and an absent self reference', asyn
 test('GitHub Actions and reusable workflows are eligible for SHA pinning', async () => {
   const extracted = await extractActions(`jobs:
   dependency-artifacts:
-    uses: maya0513/renovate-config/.github/workflows/dependency-artifacts.yml@main
-  vite-plus:
-    uses: maya0513/renovate-config/.github/workflows/vite-plus.yml@main
+    uses: maya0513/renovate-config/.github/workflows/publish-pnpm-artifacts.yml@main
   external:
     uses: example/workflows/.github/workflows/check.yml@v1
   check:
     steps:
       - uses: actions/checkout@v7
-      - uses: maya0513/renovate-config/example-action@v1
+      - uses: maya0513/renovate-config/.github/actions/mise-pnpm@main
+      - uses: maya0513/renovate-config/.github/actions/pnpm-viteplus@main
 `, '.github/workflows/consumer.yml');
   assert.equal(extracted?.deps.length, 5);
   const dependencies = extracted!.deps.map(dependency => ({
@@ -426,7 +437,7 @@ test('GitHub Actions and reusable workflows are eligible for SHA pinning', async
   const result = await updates('github-actions', dependencies);
   assert.equal(result.length, 5);
   for (const update of result) {
-    const shared = update.depName === 'maya0513/renovate-config' && update.depType === 'workflow';
+    const shared = update.depName === 'maya0513/renovate-config';
     assert.equal(update.pinDigests, true);
     assert.equal(update.automerge, !shared);
     assert.equal(update.minimumReleaseAge, shared ? null : '7 days');
@@ -451,6 +462,11 @@ test('workflow actions use SHA pins with versioned release comments', async () =
   for (const name of readdirSync(directory).filter((name) => name.endsWith('.yml'))) {
     const extracted = await extractActions(readFileSync(new URL(name, directory), 'utf8'), `.github/workflows/${name}`);
     actions.push(...(extracted?.deps.filter((dependency) => dependency.depType === 'action') ?? []));
+  }
+  for (const name of ['mise-pnpm', 'pnpm-viteplus', 'pnpm-outputs']) {
+    const file = `.github/actions/${name}/action.yml`;
+    const extracted = await extractActions(readFileSync(new URL(`../${file}`, import.meta.url), 'utf8'), file);
+    actions.push(...(extracted?.deps.filter(dependency => dependency.depType === 'action') ?? []));
   }
   assert(actions.length > 0);
   for (const action of actions) {

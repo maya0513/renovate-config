@@ -1,22 +1,37 @@
 name: CI
-
 on:
   push:
   pull_request:
   workflow_dispatch:
-
 permissions:
   contents: read
-
 concurrency:
   group: ci-${{ github.ref }}
   cancel-in-progress: true
-
 jobs:
   dependency-artifacts:
-    uses: $/.github/workflows/dependency-artifacts.yml
-    with:
-      verify-only: true
+    name: Dependency artifacts
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    env:
+      MISE_SAFE: "1"
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: jdx/mise-action@2d8d4cafcbd33be2ea37d2b6f5ad595363d1f1ca # v5.1.1
+        with:
+          install: false
+          cache: false
+      - id: mise
+        uses: $/.github/actions/mise-pnpm
+        with:
+          verify-only: "true"
+      - id: outputs
+        uses: $/.github/actions/pnpm-outputs
+        with:
+          mise-state: ${{ steps.mise.outputs.state }}
+          verify-only: "true"
   check:
     name: check
     runs-on: ubuntu-latest

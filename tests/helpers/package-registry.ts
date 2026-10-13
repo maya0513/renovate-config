@@ -7,7 +7,7 @@ import type { TestContext } from 'node:test';
 
 // A local registry makes real pnpm transitions deterministic and independent of
 // public releases, credentials, the user's store, and native Vite+ binaries.
-export async function packageRegistry(t: TestContext, root: string) {
+export async function packageRegistry(t: TestContext, root: string, pnpmVersions: string[] = []) {
   const directory = join(root, 'registry');
   mkdirSync(directory);
   const definitions: Record<string, Record<string, unknown>> = {};
@@ -25,7 +25,7 @@ export async function packageRegistry(t: TestContext, root: string) {
     (definitions[name] ??= {})[version] = { ...manifest, dist: { tarball: `${id}.tgz`, integrity } };
   }
   const pnpmVersion = execFileSync('pnpm', ['--version'], { encoding: 'utf8' }).trim();
-  add('pnpm', pnpmVersion);
+  for (const version of new Set([pnpmVersion, ...pnpmVersions])) add('pnpm', version);
   for (const [vitest, core, vp] of [['5.0.1', '1.0.0', '1.0.0'], ['5.0.2', '1.0.1', '1.0.1']] as const) {
     add('vitest', vitest);
     add('@vitest/coverage-v8', vitest, { vitest });

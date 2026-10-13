@@ -1,0 +1,4 @@
+# Real executable transitions used by dependency-tools.test.ts.
+[tools]
+node = ["24.21.0", "26.11.1"]
+pnpm = ["12.10.1", "12.11.2"]

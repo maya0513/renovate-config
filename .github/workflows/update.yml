@@ -1,16 +1,46 @@
 name: Update dependency artifacts
-
 on:
   push:
-    branches: ["renovate/**"]
-
+    branches:
+      - renovate/**
 permissions:
   contents: read
-
 jobs:
-  update:
-    uses: $/.github/workflows/dependency-artifacts.yml
+  prepare:
+    if: github.event_name == 'push' && github.event.sender.id == 29139614 && startsWith(github.ref,
+      'refs/heads/renovate/')
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    concurrency:
+      group: pnpm-artifacts-${{ github.event_name }}-${{ github.ref }}
+      cancel-in-progress: true
+    env:
+      MISE_SAFE: "1"
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: jdx/mise-action@2d8d4cafcbd33be2ea37d2b6f5ad595363d1f1ca # v5.1.1
+        with:
+          install: false
+          cache: false
+      - id: mise
+        uses: $/.github/actions/mise-pnpm
+      - id: outputs
+        uses: $/.github/actions/pnpm-outputs
+        with:
+          mise-state: ${{ steps.mise.outputs.state }}
+    outputs:
+      base: ${{ steps.outputs.outputs.base }}
+      changed: ${{ steps.outputs.outputs.changed }}
+      artifact-id: ${{ steps.outputs.outputs.artifact-id }}
+  publish:
+    needs: prepare
+    uses: $/.github/workflows/publish-pnpm-artifacts.yml
     with:
+      base: ${{ needs.prepare.outputs.base }}
+      changed: ${{ needs.prepare.outputs.changed }}
+      artifact-id: ${{ needs.prepare.outputs.artifact-id }}
       app-client-id: ${{ vars.MISE_LOCK_APP_CLIENT_ID }}
     secrets:
       app-private-key: ${{ secrets.MISE_LOCK_APP_PRIVATE_KEY }}

@@ -1,9 +1,10 @@
 import assert from 'node:assert/strict';
-import { readFileSync } from 'node:fs';
+import { execFileSync } from 'node:child_process';
+import { readFileSync, rmSync, symlinkSync } from 'node:fs';
 import { join } from 'node:path';
 import { test } from 'node:test';
 import { runInNewContext } from 'node:vm';
-import { fixture, git, prepareJob, dependencyArtifactsWorkflow, publishJob, readWorkflow, write } from './helpers/dependency-artifacts.ts';
+import { fixture, git, prepareJob, pnpmWorkflow, publishJob, readWorkflow, write } from './helpers/pnpm-artifacts.ts';
 
 test('only the real Renovate sender on a Renovate push can regenerate locks', () => {
   const allowed = (eventName: string, senderId: number, ref: string, login = 'renovate[bot]', verifyOnly = false): boolean => runInNewContext(prepareJob.if, {
@@ -16,32 +17,25 @@ test('only the real Renovate sender on a Renovate push can regenerate locks', ()
   assert.equal(allowed('push', 41898282, 'refs/heads/renovate/npm-non-major', 'github-actions[bot]'), false);
   assert.equal(allowed('push', 29139614, 'refs/heads/main'), false);
   assert.equal(allowed('pull_request', 29139614, 'refs/heads/renovate/test'), false);
-  assert.equal(allowed('pull_request', 123, 'refs/pull/1/merge', 'human', true), true);
-  assert.equal(allowed('push', 41898282, 'refs/heads/renovate/test', 'github-actions[bot]', true), true);
-  assert.equal(allowed('push', 123, 'refs/heads/main', 'human', true), true);
-  assert.equal(allowed('workflow_dispatch', 123, 'refs/heads/main', 'human', true), true);
+  assert.equal(allowed('pull_request', 123, 'refs/pull/1/merge', 'human', true), false);
+  assert.equal(allowed('push', 41898282, 'refs/heads/renovate/test', 'github-actions[bot]', true), false);
+  assert.equal(allowed('push', 123, 'refs/heads/main', 'human', true), false);
+  assert.equal(allowed('workflow_dispatch', 123, 'refs/heads/main', 'human', true), false);
 });
 
 test('verification is called on every CI event without App credentials and cannot push', () => {
   const ci = readWorkflow('ci');
   assert.deepEqual(Object.keys(ci.on).sort(), ['pull_request', 'push', 'workflow_dispatch']);
   const verification = ci.jobs['dependency-artifacts'];
-  assert.equal(verification.uses, '$/.github/workflows/dependency-artifacts.yml');
-  assert.deepEqual(verification.with, { 'verify-only': true });
   assert.equal(verification.if, undefined);
   assert.equal(verification.secrets, undefined);
-  const workflow = dependencyArtifactsWorkflow;
-  assert.equal(workflow.on.workflow_call.inputs['verify-only'].default, false);
-  assert.equal(workflow.on.workflow_call.inputs['app-client-id'].required, false);
-  assert.equal(workflow.on.workflow_call.secrets['app-private-key'].required, false);
-  assert.deepEqual(workflow.permissions, { contents: 'read' });
-  assert.equal(workflow.jobs.publish.needs, 'prepare');
+  assert(!JSON.stringify(verification).includes('app-private-key'));
+  const mise = verification.steps.find((step: { id?: string }) => step.id === 'mise');
+  const outputs = verification.steps.find((step: { id?: string }) => step.id === 'outputs');
+  assert.equal(mise.with['verify-only'], 'true');
+  assert.equal(outputs.with['verify-only'], 'true');
   assert(!JSON.stringify(prepareJob).includes('app-private-key'));
-  assert(!JSON.stringify(prepareJob).includes('permission-contents'));
-  const expression = publishJob.if.replace(/^\$\{\{\s*|\s*\}\}$/g, '');
-  for (const verifyOnly of [false, true]) {
-    assert.equal(runInNewContext(expression, { inputs: { 'verify-only': verifyOnly } }), !verifyOnly);
-  }
+  assert.equal(pnpmWorkflow.jobs.publish.needs, 'prepare');
 });
 
 test('publication requires both App credentials and performs no dependency execution', t => {
@@ -211,7 +205,7 @@ test('the post-update task runs once at the root with a literal name after locke
     `${f.repo}||0|run -- ${task}`,
   ]);
   assert(calls.filter((_, index) => index !== taskIndex).every((line) => line.includes('|1|')));
-  assert.deepEqual(calls.slice(taskIndex + 1), [
+  assert.deepEqual(calls.slice(taskIndex + 1).filter(line => line.includes('|install ')), [
     `${f.repo}||1|install --locked --dry-run`,
     `${f.repo}/nested||1|install --locked --dry-run`,
   ]);
@@ -225,21 +219,85 @@ test('an unchanged post-update task does not create an empty commit', (t) => {
   assert.equal(f.outputs().changed, 'false');
 });
 
-test('tracked locks are staged after the post-update task has finished', (t) => {
+test('a post-update task cannot replace a prepared lock even with an otherwise valid result', (t) => {
   const f = fixture(t);
-  f.update({ NO_CHANGE: '1', TASK_CHANGES_LOCK: '1', POST_UPDATE_TASK: 'generate' });
-  assert.match(git(f.repo, 'show', 'HEAD:mise.lock'), /task update$/);
-  assert.equal(git(f.repo, 'diff', '--name-only', f.base, 'HEAD'), 'mise.lock');
+  assert.throws(() => f.update({ NO_CHANGE: '1', TASK_CHANGES_LOCK: '1', POST_UPDATE_TASK: 'generate' }), error => {
+    assert(error instanceof Error && 'stdout' in error);
+    assert.match(String(error.stdout), /Post-update task changed dependency declarations, lockfiles, or sidecars/);
+    return true;
+  });
+  f.assertUnpublished();
+  f.assertNoPayload();
 });
 
 for (const path of ['mise.lock', 'nested/mise.lock', 'mise.prod.lock', '.mise/locks/new/package.lock']) {
   test(`post-update corruption of ${path} stops before committing`, (t) => {
     const f = fixture(t, { 'mise.lock': 'old\n', 'nested/mise.lock': 'old\n', 'mise.prod.lock': 'old\n' });
-    assert.throws(() => f.update({ SIDECARS: '1', POST_UPDATE_TASK: 'generate', TASK_INVALID_PATH: path }));
+    assert.throws(() => f.update({ SIDECARS: '1', POST_UPDATE_TASK: 'generate', TASK_INVALID_PATH: path }), error => {
+      assert(error instanceof Error && 'stdout' in error);
+      assert.match(String(error.stdout), /Post-update task changed dependency declarations, lockfiles, or sidecars/);
+      return true;
+    });
     f.assertUnpublished();
-    assert.notEqual(f.outputs().changed, 'true');
+    f.assertNoPayload();
   });
 }
+
+for (const [name, script] of [
+  ['root declaration', 'printf "[tools]\\nnode = \\\"26\\\"\\n" > mise.toml'],
+  ['nested declaration', 'printf "[tools]\\nnode = \\\"26\\\"\\n" > nested/mise.toml'],
+  ['environment declaration', 'printf "[tools]\\nnode = \\\"26\\\"\\n" > mise.prod.toml'],
+  ['added active config', 'printf "[tools]\\nnode = \\\"26\\\"\\n" > mise.local.toml'],
+  ['removed active config', 'rm mise.toml'],
+  ['npm declaration', 'printf "{}\\n" > package.json'],
+  ['workspace declaration', 'printf "overrides: {}\\n" > pnpm-workspace.yaml'],
+  ['new sidecar file', 'printf "new\\n" > .mise/locks/new/extra.lock'],
+  ['deleted sidecar file', 'rm .mise/locks/new/package.lock'],
+] as const) {
+  test(`post-update tasks reject ${name} changes in update and verify modes`, t => {
+    for (const mode of ['false', 'true']) {
+      const f = fixture(t, {
+        'mise.lock': 'old\n', 'nested/mise.lock': 'old\n', 'nested/mise.toml': '[tools]\nnode = "24"\n',
+        'mise.prod.lock': 'old\n', 'mise.prod.toml': '[tools]\nnode = "24"\n',
+        '.mise/locks/new/package.lock': 'native dependency lock\n', 'package.json': '{"private":true}\n',
+        'pnpm-workspace.yaml': 'pmOnFail: error\n',
+      });
+      assert.throws(() => f.update({
+        NO_CHANGE: '1', VERIFY_ONLY: mode, POST_UPDATE_TASK: 'generate',
+        // Listing a dependency input as an output must not bypass the boundary.
+        POST_UPDATE_PATHS: 'package.json\nnested\n.mise/locks', TASK_SCRIPT: script,
+      }), error => {
+        assert(error instanceof Error && 'stdout' in error);
+        assert.match(String(error.stdout), /Post-update task changed dependency declarations, lockfiles, or sidecars/);
+        return true;
+      });
+      f.assertUnpublished(); f.assertNoPayload();
+    }
+  });
+}
+
+test('real mise discovers added and removed active configs for the task boundary', t => {
+  const mise = execFileSync('which', ['mise'], { encoding: 'utf8' }).trim();
+  for (const script of [
+    'printf "[tools]\\nnode = \\\"26\\\"\\n" > nested/mise.local.toml',
+    'rm nested/mise.toml',
+    'rm mise.prod.toml',
+  ]) {
+    const f = fixture(t, {
+      'mise.lock': 'old\n', 'nested/mise.lock': 'old\n', 'nested/mise.toml': '[tools]\nnode = "24"\n',
+      'mise.prod.lock': 'old\n', 'mise.prod.toml': '[tools]\nnode = "24"\n',
+    });
+    assert.throws(() => f.update({
+      CONFIG_MISE: mise, MISE_STATE_DIR: join(f.root, 'mise-state'), MISE_CACHE_DIR: join(f.root, 'mise-cache'),
+      MISE_TRUSTED_CONFIG_PATHS: f.repo, NO_CHANGE: '1', POST_UPDATE_TASK: 'generate', TASK_SCRIPT: script,
+    }), error => {
+      assert(error instanceof Error && 'stdout' in error);
+      assert.match(String(error.stdout), /Post-update task changed dependency declarations, lockfiles, or sidecars/);
+      return true;
+    });
+    f.assertUnpublished(); f.assertNoPayload();
+  }
+});
 
 test('post-update paths accept separate files, deletions, CRLF, blank lines, and missing outputs', (t) => {
   const f = fixture(t, { 'mise.lock': 'old\n', 'generated docs/removed.txt': 'obsolete\n' });
@@ -307,3 +365,40 @@ test('a deleted Renovate branch is never recreated by the lockfile workflow', (t
   assert.throws(() => f.run('push'));
   assert.throws(() => git(f.root, '--git-dir', f.remote, 'rev-parse', '--verify', 'refs/heads/renovate/test'));
 });
+
+for (const value of ['yes', '1', '']) {
+  test(`mise component rejects invalid verify-only ${JSON.stringify(value)} before generation`, t => {
+    const f = fixture(t);
+    assert.throws(() => f.runComponent('mise-pnpm', { 'verify-only': value }), error => {
+      assert(error instanceof Error && 'stdout' in error);
+      assert.match(String(error.stdout), /verify-only must be true or false/); return true;
+    });
+    assert.equal(readFileSync(f.log, 'utf8'), ''); f.assertUnpublished(); f.assertNoPayload();
+  });
+}
+
+for (const invalid of ['mode', 'base', 'root', 'missing', 'symlink', 'unselected'] as const) {
+  test(`final component rejects ${invalid} preparation state before a generation task`, t => {
+    const f = fixture(t);
+    const prepared = f.runComponent('mise-pnpm');
+    const statePath = prepared.outputs.state!;
+    if (['base', 'root'].includes(invalid)) {
+      const state = JSON.parse(readFileSync(statePath, 'utf8'));
+      state[invalid] = 'different'; write(f.runnerTemp, 'mise-pnpm-state.json', JSON.stringify(state));
+    }
+    if (invalid === 'missing') rmSync(statePath);
+    if (invalid === 'symlink') { rmSync(statePath); symlinkSync(join(f.repo, 'mise.toml'), statePath); }
+    const before = readFileSync(f.log, 'utf8');
+    assert.throws(() => f.runComponent('pnpm-outputs', {
+      'mise-state': invalid === 'unselected' ? '' : statePath,
+      'verify-only': invalid === 'mode' ? 'true' : 'false', 'post-update-task': 'generate',
+    }), error => {
+      assert(error instanceof Error && 'stdout' in error);
+      assert.match(String(error.stdout), invalid === 'unselected' ? /Select at least one/
+        : ['mode', 'base', 'root'].includes(invalid) ? /same commit, repository and verify-only/ : /Invalid or missing preparation state/);
+      return true;
+    });
+    assert.equal(readFileSync(f.log, 'utf8'), before);
+    f.assertUnpublished(); f.assertNoPayload();
+  });
+}
