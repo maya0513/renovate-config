@@ -5,7 +5,7 @@ mise ls --current --json node > "$RUNNER_TEMP/node-tools.json"
 mise ls --current --json pnpm > "$RUNNER_TEMP/pnpm-tools.json"
 node_home=$(mise where node)
 pnpm_home=$(mise where pnpm)
-if [[ "${1:-}" != --verify ]]; then export PATH="$node_home/bin:$pnpm_home:$PATH"; fi
+if [[ "${1:-}" != --verify ]]; then export PATH="$pnpm_home:$node_home/bin:$PATH"; fi
 export PNPM_EXECUTABLE
 PNPM_EXECUTABLE=$(command -v pnpm)
 node "$ACTION_PATH/../mise-pnpm/check-tools.mjs"

@@ -185,3 +185,12 @@ test('a forged manifest cannot authorize unrelated payload paths', t => {
   assert.throws(() => f.commitPrepared(), failure(/disallowed path: unrelated.txt/));
   f.assertUnpublished();
 });
+
+test('mise pnpm takes precedence over a pnpm shim beside the selected Node executable', t => {
+  const f = fixture(t);
+  write(f.root, 'selected-node/bin/pnpm', '#!/bin/sh\necho unexpected-node-pnpm-shim >&2\nexit 99\n');
+  chmodSync(join(f.root, 'selected-node/bin/pnpm'), 0o755);
+  f.prepare();
+  assert.equal(f.runScript('command -v pnpm').trim(), join(f.bin, 'pnpm'));
+  f.assertUnpublished();
+});
