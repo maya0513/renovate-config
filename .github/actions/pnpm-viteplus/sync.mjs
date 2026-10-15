@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import { execFileSync, spawnSync } from 'node:child_process';
 import { lstatSync, readFileSync, realpathSync, writeFileSync } from 'node:fs';
 import { createRequire } from 'node:module';
-import { dirname, join, resolve } from 'node:path';
+import { join, resolve } from 'node:path';
 
 const git = (...args) => execFileSync('git', args, { encoding: 'utf8' }).trim();
 const manifest = path => JSON.parse(readFileSync(path, 'utf8'));
@@ -13,18 +13,17 @@ const isAllowedArtifact = (path, allowed) => allowed.some(root => resolve(path) 
 const statePath = join(process.env.RUNNER_TEMP, 'viteplus-state.json');
 const require = createRequire(join(process.cwd(), 'package.json'));
 const packagePath = (name, from = require) => {
-  try { return from.resolve(`${name}/package.json`); }
-  catch {
-    let directory = dirname(from.resolve(name));
-    while (directory !== dirname(directory)) {
-      try {
-        const path = join(directory, 'package.json');
-        if (manifest(path).name === name) return path;
-      } catch {}
-      directory = dirname(directory);
+  // Read installed manifests independently of exports, without loading package code.
+  for (const directory of from.resolve.paths(name) ?? []) {
+    const path = join(directory, name, 'package.json');
+    try {
+      manifest(path);
+      return realpathSync(path);
+    } catch (error) {
+      if (error.code !== 'ENOENT') throw error;
     }
-    throw new Error(`Cannot resolve package manifest: ${name}`);
   }
+  throw Object.assign(new Error(`Cannot resolve package manifest: ${name}`), { code: 'MODULE_NOT_FOUND' });
 };
 const unrelated = project => {
   const versions = new Map();
@@ -32,7 +31,7 @@ const unrelated = project => {
   const visit = (name, from, optional = false) => {
     let path;
     try { path = realpathSync(packagePath(name, from)); }
-    catch (error) { if (optional) return; throw error; }
+    catch (error) { if (optional && error.code === 'MODULE_NOT_FOUND') return; throw error; }
     if (visited.has(path)) return;
     visited.add(path);
     const pkg = manifest(path);

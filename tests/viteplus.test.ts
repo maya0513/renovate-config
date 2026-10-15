@@ -36,6 +36,94 @@ test('aligned verification needs no credentials and creates no payload, commit o
   assert(!existsSync(join(f.runnerTemp, 'pnpm-artifacts/changes.patch')));
   assert(!f.calls().includes('"update"'));
 });
+
+for (const condition of ['import', 'types'] as const) {
+  const transitive = {
+    name: 'transitive', version: '1.0.0', type: 'module',
+    exports: { '.': { [condition]: condition === 'import' ? './index.js' : './index.d.ts' } },
+  };
+  for (const verifyOnly of [false, true]) {
+    test(`Vite+ ${verifyOnly ? 'verification' : 'synchronization'} reads ${condition}-only transitive manifests without executing dependency code`, t => {
+      const f = fixture(t, { aligned: verifyOnly, unrelatedVersion: true });
+      const name = condition === 'import' ? 'transitive' : '@fixture/transitive';
+      f.pkg('other', { name: 'other', version: '1.0.0', dependencies: { [name]: '1.0.0' } });
+      f.pkg(name, { name: 'transitive', version: '9.0.0' });
+      f.pkg(`other/node_modules/${name}`, transitive);
+      write(f.repo, `node_modules/other/node_modules/${name}/index.js`, "throw new Error('Dependency code must not execute');\n");
+      write(f.repo, `node_modules/other/node_modules/${name}/index.d.ts`, 'export {};\n');
+
+      f.prepare({ VERIFY_ONLY: String(verifyOnly) });
+      const state = JSON.parse(readFileSync(join(f.runnerTemp, 'viteplus-state.json'), 'utf8'));
+      assert.deepEqual(state.unrelated, { other: ['1.0.0'], transitive: ['1.0.0'] });
+      assert.equal(f.outputs().changed, String(!verifyOnly));
+      assert.equal(git(f.repo, 'diff', '--name-only', 'HEAD'), verifyOnly ? '' : 'pnpm-lock.yaml');
+      if (verifyOnly) {
+        assert(!f.calls().includes('"update"'));
+        f.assertNoPayload();
+      } else {
+        assert.match(f.calls(), /"update","@vitest\/coverage-v8@5.0.1","--no-save"/);
+      }
+      f.assertUnpublished();
+    });
+  }
+
+  test(`final validation rejects changes to ${condition}-only transitive dependency versions`, t => {
+    const f = fixture(t, { aligned: true, unrelatedVersion: true });
+    f.pkg('transitive', transitive);
+    write(f.repo, 'node_modules/transitive/index.js', "throw new Error('Dependency code must not execute');\n");
+    f.run('locks');
+    f.run('sync');
+    f.pkg('transitive', { ...transitive, version: '1.1.0' });
+    assert.throws(() => f.run('update'), error => {
+      assert(error instanceof Error && 'stderr' in error);
+      assert.match(String(error.stderr), /Unrelated dependency versions changed/);
+      return true;
+    });
+    f.assertUnpublished(); f.assertNoPayload();
+  });
+}
+
+for (const optional of [false, true]) {
+  const kind = optional ? 'optional' : 'required';
+  const field = optional ? 'optionalDependencies' : 'dependencies';
+  test(`missing ${kind} transitive manifests ${optional ? 'are skipped' : 'fail verification'}`, t => {
+    const f = fixture(t, { aligned: true, unrelatedVersion: true });
+    f.pkg('other', { name: 'other', version: '1.0.0', [field]: { 'missing-fixture-dependency': '1.0.0' } });
+    if (optional) {
+      f.prepare({ VERIFY_ONLY: 'true' });
+      const state = JSON.parse(readFileSync(join(f.runnerTemp, 'viteplus-state.json'), 'utf8'));
+      assert.deepEqual(state.unrelated, { other: ['1.0.0'] });
+      assert.equal(f.outputs().changed, 'false');
+    } else {
+      assert.throws(() => f.prepare({ VERIFY_ONLY: 'true' }), error => {
+        assert(error instanceof Error && 'stderr' in error);
+        assert.match(String(error.stderr), /MODULE_NOT_FOUND/);
+        assert.match(String(error.stderr), /Cannot resolve package manifest: missing-fixture-dependency/);
+        return true;
+      });
+    }
+    assert.equal(git(f.repo, 'status', '--porcelain'), '');
+    f.assertUnpublished(); f.assertNoPayload();
+  });
+
+  for (const failure of ['invalid JSON', 'read error'] as const) {
+    test(`rejects ${failure} in ${kind} transitive manifests without falling back to a hoisted copy`, t => {
+      const f = fixture(t, { aligned: true, unrelatedVersion: true });
+      f.pkg('other', { name: 'other', version: '1.0.0', [field]: { transitive: '1.0.0' } });
+      const path = 'node_modules/other/node_modules/transitive/package.json';
+      if (failure === 'invalid JSON') write(f.repo, path, '{\n');
+      else mkdirSync(join(f.repo, path), { recursive: true });
+      assert.throws(() => f.prepare({ VERIFY_ONLY: 'true' }), error => {
+        assert(error instanceof Error && 'stderr' in error);
+        assert.match(String(error.stderr), failure === 'invalid JSON' ? /SyntaxError/ : /EISDIR/);
+        return true;
+      });
+      assert.equal(git(f.repo, 'status', '--porcelain'), '');
+      f.assertUnpublished(); f.assertNoPayload();
+    });
+  }
+}
+
 for (const declarations of [false, true]) {
   test(`stale Vite+ ${declarations ? 'declarations' : 'graph'} fails verification without repair`, t => {
     const f = fixture(t, { declarations, exact: declarations });
