@@ -4,7 +4,7 @@
   "private": true,
   "description": "Shared Renovate preset and mise lockfile workflow",
   "type": "module",
-  "packageManager": "pnpm@12.10.1",
+  "packageManager": "pnpm@12.14.0",
   "engines": {
     "node": "24.21.0"
   },
