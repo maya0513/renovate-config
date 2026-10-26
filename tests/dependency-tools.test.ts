@@ -21,13 +21,13 @@ for (const engines of [undefined, { node: '>=24 <27' }, { node: '<1' }]) {
     const f = fixture(t, {
       '.gitignore': 'node_modules/\n',
       'mise.toml': '[tools]\nnode = "24"\npnpm = "12"\n',
-      'mise.lock': readFileSync(new URL('../mise.lock', import.meta.url), 'utf8'),
+      'mise.lock': readFileSync(new URL('./fixtures/ranges.lock', import.meta.url), 'utf8'),
       'package.json': JSON.stringify({ name: 'engine-compatibility', private: true, packageManager: 'pnpm@12.10.1', devDependencies: { ordinary: '1.0.0' } }),
       'pnpm-workspace.yaml': 'pmOnFail: error\nengineStrict: true\n',
     });
-    const registry = await packageRegistry(t, f.root);
-    const mise = realpathSync(execFileSync('which', ['mise'], { encoding: 'utf8' }).trim());
     const pnpm = tools('pnpm')[0]!;
+    const registry = await packageRegistry(t, f.root, [pnpm.version]);
+    const mise = realpathSync(execFileSync('which', ['mise'], { encoding: 'utf8' }).trim());
     const nodeHome = execFileSync(mise, ['where', 'node'], { encoding: 'utf8' }).trim();
     write(f.root, 'empty.toml', '');
     const env = {
@@ -47,6 +47,7 @@ for (const engines of [undefined, { node: '>=24 <27' }, { node: '<1' }]) {
     write(f.repo, 'package.json', JSON.stringify({ name: 'engine-compatibility', private: true, engines, packageManager: 'pnpm@12.10.1', devDependencies: { ordinary: '1.0.0' } }));
     git(f.repo, 'add', '.'); git(f.repo, 'commit', '-m', 'initial pnpm lock');
     const base = git(f.repo, 'rev-parse', 'HEAD');
+    const locked = readFileSync(join(f.repo, 'mise.lock'), 'utf8');
     const run = () => f.prepare({ ...env, VERIFY_ONLY: 'true', LOCK_GROUPS: JSON.stringify([
       { lockfile: 'mise.lock', tools: ['node', 'pnpm'], platforms: ['linux-x64'], verify: 'locked' },
     ]) });
@@ -61,6 +62,7 @@ for (const engines of [undefined, { node: '>=24 <27' }, { node: '<1' }]) {
       run(); assert.equal(f.outputs().changed, 'false');
     }
     assert.equal(git(f.repo, 'rev-parse', 'HEAD'), base);
+    assert.equal(readFileSync(join(f.repo, 'mise.lock'), 'utf8'), locked);
   });
 }
 
