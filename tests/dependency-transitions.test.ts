@@ -121,7 +121,7 @@ for (const verifyOnly of [false, true]) {
         TASK_SCRIPT: 'cp "$TEST_REPO/../invalid-lock.yaml" pnpm-lock.yaml',
       } : {};
       write(duringTask ? f.root : f.repo, duringTask ? 'invalid-lock.yaml' : 'pnpm-lock.yaml', invalid);
-      assert.throws(() => f.run('update', { ...registry.env, ...taskEnv }), error => {
+      assert.throws(() => f.run('update', { ...selected, ...taskEnv }), error => {
         assert(error instanceof Error && 'stdout' in error && 'stderr' in error);
         assert.match(String(error.stdout) + String(error.stderr), duringTask
           ? /Post-update task changed dependency declarations, lockfiles, or sidecars/
