@@ -72,7 +72,7 @@ for (const transition of ['node', 'pnpm', 'viteplus', 'node+viteplus', 'pnpm+vit
     git(f.repo, 'push');
     f.update({ ...registry.env, TEST_PNPM_VERSION: registry.pnpmVersion });
     f.run('push', registry.env);
-    f.update({ ...registry.env, VERIFY_ONLY: 'true', NO_CHANGE: '1' });
+    f.update({ ...registry.env, TEST_PNPM_VERSION: registry.pnpmVersion, VERIFY_ONLY: 'true', NO_CHANGE: '1' });
     pnpm('install', '--frozen-lockfile', '--offline');
     assert.equal(f.outputs().changed, 'false');
     const lock = parseAllDocuments(readFileSync(join(f.repo, 'pnpm-lock.yaml'), 'utf8')).at(-1)!.toJS();
@@ -108,7 +108,8 @@ for (const verifyOnly of [false, true]) {
       write(f.repo, 'mise.toml', `[tools]\nnode = "${process.versions.node}"\npnpm = "${registry.pnpmVersion}"\n`);
     git(f.repo, 'add', '.'); git(f.repo, 'commit', '-m', 'initial synchronized graph'); git(f.repo, 'push');
       const candidate = git(f.repo, 'rev-parse', 'HEAD');
-      f.run('locks', registry.env); f.run('tools', registry.env); if (viteplus) f.run('sync', registry.env);
+      const selected = { ...registry.env, TEST_PNPM_VERSION: registry.pnpmVersion };
+      f.run('locks', selected); f.run('tools', selected); if (viteplus) f.run('sync', selected);
 
       const documents = parseAllDocuments(readFileSync(join(f.repo, 'pnpm-lock.yaml'), 'utf8'));
       documents.at(-1)!.setIn(['importers', '.', 'devDependencies', 'vite-plus', 'specifier'], '999.0.0');
