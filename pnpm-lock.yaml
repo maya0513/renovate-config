@@ -174,7 +174,7 @@ importers:
         version: 24.19.2
       renovate:
         specifier: ^44.122.0
-        version: 44.182.1(supports-color@7.2.0)(typanion@3.14.0)
+        version: 44.183.0(supports-color@7.2.0)(typanion@3.14.0)
       typescript:
         specifier: ^7.0.2
         version: 7.0.2
@@ -1575,8 +1575,8 @@ packages:
     resolution: {integrity: sha512-/8UvqAPU9DGTI9k4mxtf49U37Isfwr8Uts96+SBHIkFxPJnHS0Ew4f00sM4Scd8V8EjM0jUNtVDdv1kPdt35lg==}
     engines: {node: '>= 4'}
 
-  import-in-the-middle@3.5.2:
-    resolution: {integrity: sha512-WseIA/4o56+GYO3RmlOPvejYi771OFeJEeK/ejROsr9bdjW+E5NXTOD1Di8TL40Qgg3JJX9aa97Hf8iiSVIKZw==}
+  import-in-the-middle@3.5.3:
+    resolution: {integrity: sha512-usm/IiY63VtOyx/dm7uEoZV+EsanCDmwRUroQZIkFLGu1NVXZ8mZqIOhaN4QIJ7EsbMTuQbJXwCySCx+ozMA8g==}
     engines: {node: '>=18'}
 
   imurmurhash@0.1.4:
@@ -2224,8 +2224,8 @@ packages:
   remark@15.0.1:
     resolution: {integrity: sha512-Eht5w30ruCXgFmxVUSlNWQ9iiimq07URKeFS3hNc8cUWy1llX4KDWfyEDZRycMc+znsN9Ux5/tJ/BFdgdOwA3A==}
 
-  renovate@44.182.1:
-    resolution: {integrity: sha512-sM7r67iCAPQF5n6wuKh87UabKODTfN+VwSequsPpaJGeHMwH2/nH0c8uE93IH6zS1T9aS/MKMejsfLaBdB9eEQ==}
+  renovate@44.183.0:
+    resolution: {integrity: sha512-pHE4Elf13pv8VHs9MUXzyDZyDbWQArZQBi7Ps5Mxb7HzoDdyauAt/nwE7f/I1nRsM0eaJKYCQAJD+w1esKrN5A==}
     engines: {node: ^24.11.0, pnpm: ^11.0.0}
     hasBin: true
 
@@ -3047,7 +3047,7 @@ snapshots:
     dependencies:
       '@opentelemetry/api': 1.9.1
       '@opentelemetry/api-logs': 0.223.0
-      import-in-the-middle: 3.5.2
+      import-in-the-middle: 3.5.3
       require-in-the-middle: 8.0.1(supports-color@7.2.0)
     transitivePeerDependencies:
       - supports-color
@@ -4230,7 +4230,7 @@ snapshots:
 
   ignore@7.0.12: {}
 
-  import-in-the-middle@3.5.2:
+  import-in-the-middle@3.5.3:
     dependencies:
       cjs-module-lexer: 2.3.0
       es-module-lexer: 3.0.4
@@ -5030,7 +5030,7 @@ snapshots:
     transitivePeerDependencies:
       - supports-color
 
-  renovate@44.182.1(supports-color@7.2.0)(typanion@3.14.0):
+  renovate@44.183.0(supports-color@7.2.0)(typanion@3.14.0):
     dependencies:
       '@aws-sdk/client-codecommit': 3.1139.0
       '@aws-sdk/client-ec2': 3.1139.0
