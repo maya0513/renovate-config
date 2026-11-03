@@ -2,6 +2,7 @@
 set -euo pipefail
 lockfiles="$RUNNER_TEMP/mise-lockfiles"
 artifacts="$RUNNER_TEMP/mise-lock-artifacts"
+if [[ "$HAS_MISE" == false ]]; then lockfiles=/dev/null; artifacts=/dev/null; fi
 root=$(git rev-parse --show-toplevel)
 source "$ACTION_PATH/../lib/mise.sh"
 source "$ACTION_PATH/../lib/snapshot.sh"

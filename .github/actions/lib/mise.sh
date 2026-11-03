@@ -1,5 +1,7 @@
 #!/usr/bin/env bash
-artifacts="${RUNNER_TEMP:?}/mise-lock-artifacts"
+# Final validation may deliberately select /dev/null when mise is not part of
+# this chain. Respect the caller's inventory instead of using another chain's.
+artifacts="${artifacts:-${RUNNER_TEMP:?}/mise-lock-artifacts}"
 
 mise_for_lock() {
   local lock="$1" name="${1##*/}" mise_env="" is_local=false

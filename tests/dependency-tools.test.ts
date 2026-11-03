@@ -4,7 +4,7 @@ import { chmodSync, readFileSync, realpathSync, rmSync, symlinkSync } from 'node
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { test } from 'node:test';
-import { fixture, git, write } from './helpers/pnpm-artifacts.ts';
+import { fixture, git, write, releaseAgePolicy } from './helpers/pnpm-artifacts.ts';
 import { packageRegistry } from './helpers/package-registry.ts';
 
 interface Tool { version: string; install_path: string; installed: boolean }
@@ -23,7 +23,7 @@ for (const engines of [undefined, { node: '>=24 <27' }, { node: '<1' }]) {
       'mise.toml': '[tools]\nnode = "24"\npnpm = "12"\n',
       'mise.lock': readFileSync(new URL('./fixtures/ranges.lock', import.meta.url), 'utf8'),
       'package.json': JSON.stringify({ name: 'engine-compatibility', private: true, packageManager: 'pnpm@12.10.1', devDependencies: { ordinary: '1.0.0' } }),
-      'pnpm-workspace.yaml': 'pmOnFail: error\nengineStrict: true\n',
+      'pnpm-workspace.yaml': releaseAgePolicy + 'pmOnFail: error\nengineStrict: true\n',
     });
     const pnpm = tools('pnpm')[0]!;
     const registry = await packageRegistry(t, f.root, [pnpm.version]);
@@ -88,7 +88,7 @@ for (const viteplus of [false, true]) {
         devDependencies: { ordinary: '^1.0.0', ...(viteplus ? { 'vite-plus': '1.0.0', '@vitest/coverage-v8': '5.0.1' } : {}) },
       };
       write(f.repo, 'package.json', JSON.stringify(project, null, 2) + '\n');
-      write(f.repo, 'pnpm-workspace.yaml', 'pmOnFail: error\n' + (viteplus ? 'overrides:\n  vite: npm:@voidzero-dev/vite-plus-core@1.0.0\n  vitest: 5.0.1\n' : ''));
+      write(f.repo, 'pnpm-workspace.yaml', releaseAgePolicy + 'pmOnFail: error\n' + (viteplus ? 'overrides:\n  vite: npm:@voidzero-dev/vite-plus-core@1.0.0\n  vitest: 5.0.1\n' : ''));
       install(previousNode, previousPnpm, '--no-frozen-lockfile');
       git(f.repo, 'add', '.'); git(f.repo, 'commit', '-m', 'baseline with previous executables');
       project.packageManager = `pnpm@${selectedPnpm.version}` + (!viteplus && transition === 'node' ? `+sha512.${'a'.repeat(128)}` : ''); project.engines.node = selectedNode.version;

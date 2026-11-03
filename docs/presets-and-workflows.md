@@ -8,13 +8,14 @@ Renovate selects dependency updates. Consumers compose generation components, va
 
 | Consumer configuration | Additional presets | Order within one preparation job |
 | --- | --- | --- |
+| pnpm without mise/Vite+ generation | None | Prepare Node/pnpm → `pnpm-outputs` without inputs (verification only) |
 | mise-managed Node and pnpm | `mise-pnpm` | `mise-pnpm` → `pnpm-outputs` |
 | Above + pnpm-managed Vite+ | `mise-pnpm`, `viteplus` | `mise-pnpm` → `pnpm-viteplus` → `pnpm-outputs` |
 | Consumer-prepared Node/pnpm + pnpm-managed Vite+ | `viteplus` | Prepare Node/pnpm → `pnpm-viteplus` → `pnpm-outputs` |
 
 Node and pnpm prepared through Nix or another method can connect to the same Vite+ components. However, the complete flow has not been verified in a Nix environment. Consumers own Nix declaration/lockfile generation and consistency checks; do not select the `mise-pnpm` preset or action for that configuration.
 
-Updates call `publish-pnpm-artifacts.yml` in a separate job. Individual preparation components never commit or push.
+Generated updates call `publish-pnpm-artifacts.yml` in a separate job. Individual preparation components never commit or push. Input-free pnpm verification needs no publishing job; projects without pnpm need no pnpm components.
 
 | Responsibility | Owner |
 | --- | --- |
@@ -27,6 +28,11 @@ Updates call `publish-pnpm-artifacts.yml` in a separate job. Individual preparat
 | App authentication, commit and push | [`publish-pnpm-artifacts.yml`](../.github/workflows/publish-pnpm-artifacts.yml): never executes dependencies |
 | Platforms, compatibility, tasks, required checks and releases | Consumer |
 
+[`pnpm-outputs` checks the release-age policy](release-age.md) before additional
+generation and final frozen installation. Existing consumers keep the same action
+calls. Without mise/Vite+ preparation state, it performs policy and frozen-lockfile
+verification only, without generation or publication.
+
 Renovate retains native npm artifact generation for pnpm updates. Companion actions do not repair stale pnpm manager metadata. If the initial frozen install fails, inspect Renovate's artifact generation result and logs first.
 
 ## Prerequisites
@@ -37,6 +43,7 @@ Run preparation on Linux, such as Ubuntu, with Bash, GNU coreutils, jq and Git. 
 2. Extend the shared default and configuration-specific presets. Presets do not invoke actions.
 3. Prepare checkout (`persist-credentials: false`) and tool provisioning, then invoke the components in order. Use mise-action (`install: false`) for mise configurations; otherwise, put Node and pnpm on PATH through consumer-owned preparation. Pass identical lock groups, generation task and output paths to update and verification callers.
 4. Run CI for both updates and verification. Only Mend Renovate pushes to `renovate/` branches use update mode; follow-up App pushes use verification.
+5. Configure at least seven days of pnpm release-age protection and require the CI job containing `pnpm-outputs`. Prepare reviewed version-specific security exceptions when needed. See [policy and migration](release-age.md).
 
 mise tool validation: `mise-pnpm` compares locked and running versions, rather than declaration strings or executable locations. Shims and wrappers running the same version are supported. Mismatches and untracked locks fail without repair. The following requirements apply when using `mise-pnpm`.
 
@@ -116,6 +123,7 @@ The publishing job uses `needs: prepare` and `uses: maya0513/renovate-config/.gi
 | Vite+ preparation | `preparation-state` (optional) | Inherit mode and prepared paths without depending on mise commands or configuration syntax |
 | Vite+ preparation | Output `state` | Pass to final validation; the output is the same regardless of Node/pnpm provisioning |
 | Final validation | `mise-state`, `viteplus-state` | Pass selected component outputs; infer mode from state and check repository, commit and mode agreement |
+| Final validation without either state | No inputs | Verification only: check release-age policy and frozen installation; never stage or publish |
 | Final validation | `post-update-task` (default empty) | Additional generation through a mise task; requires mise when specified |
 | Final validation | `post-update-paths` (default empty) | Additional output files/directories to publish; specifying paths does not run generation |
 | Final validation | Outputs `base`, `changed`, `artifact-id` | Upload only validated update payloads; verification never uploads |
@@ -132,7 +140,7 @@ Example lock group:
 
 Additional tasks must not change dependency declarations, effective mise configuration, managed lockfiles or sidecars. Configuration additions and removals also fail. Listing a dependency input in `post-update-paths` does not lift this restriction. Additional outputs may be created, changed or removed. Move dependency-changing work from existing tasks to preparation before the task.
 
-After additional generation, final validation checks mise locks only when `mise-state` is supplied. Both configurations run a frozen installation with the same executables/options; supplying `viteplus-state` also enables Vite+ declaration and graph validation. Vite+ checks coverage against bundled Vitest, one Vitest instance, the Vite core alias, unchanged selected Vite+ and unchanged unrelated dependency versions. Verification never repairs declarations or pnpm lockfiles.
+If preparation ran for the same checkout and commit, its state is required; a missing connection fails instead of switching to standalone verification. Standalone or non-mise validation never clears another preparation's inventories. After additional generation, final validation checks mise locks when `mise-state` is supplied. Both configurations run a frozen installation with the same executables/options; supplying `viteplus-state` also enables Vite+ declaration and graph validation. Vite+ checks coverage against bundled Vitest, one Vitest instance, the Vite core alias, unchanged selected Vite+ and unchanged unrelated dependency versions. Verification never repairs declarations or pnpm lockfiles.
 
 ## What remains in the consumer
 
@@ -140,6 +148,7 @@ After additional generation, final validation checks mise locks only when `mise-
 | --- | --- |
 | Selection and connections | Choose Node/pnpm provisioning and invoke the selected components and final validation in one job; connect state and publishing outputs |
 | Repository-specific values | Adopted versions, lock groups, tasks and output paths; use identical values for updates and verification |
+| Release-age policy | Track pnpm settings and reviewed exact-version exceptions; require `pnpm-outputs` CI for each independent pnpm root |
 | Publication authorization | Pass App credentials only to the separate job; explicitly allow components and additional paths, independently of preparation outputs |
 | Optional naming | Workflow names, step IDs, environment names and Secret names |
 

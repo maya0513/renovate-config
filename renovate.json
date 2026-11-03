@@ -3,5 +3,10 @@
   "extends": [
     "local>maya0513/renovate-config",
     "local>maya0513/renovate-config//presets/mise-pnpm"
-  ]
+  ],
+  "npm": {
+    "lockFileMaintenance": {
+      "minimumReleaseAge": null
+    }
+  }
 }

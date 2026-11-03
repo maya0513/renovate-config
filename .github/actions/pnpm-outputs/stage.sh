@@ -1,8 +1,15 @@
 #!/usr/bin/env bash
 set -euo pipefail
 [[ "$(git rev-parse HEAD)" == "$PREPARATION_BASE" ]] || { echo "::error::Generation changed the prepared commit"; exit 1; }
+if [[ "$HAS_MISE" == false && "$HAS_VITEPLUS" == false ]]; then
+  # Standalone verification must not reset the index, stage files or produce a
+  # publication payload, even when the caller is a Mend push.
+  echo "changed=false" >> "$GITHUB_OUTPUT"
+  exit 0
+fi
 lockfiles="$RUNNER_TEMP/mise-lockfiles"
 artifacts="$RUNNER_TEMP/mise-lock-artifacts"
+if [[ "$HAS_MISE" == false ]]; then lockfiles=/dev/null; artifacts=/dev/null; fi
 root=$(git rev-parse --show-toplevel)
 source "$ACTION_PATH/../lib/mise.sh"
 stage_path() {

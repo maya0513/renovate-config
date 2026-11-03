@@ -169,6 +169,8 @@ export function write(root: string, path: string, content: string): void {
   writeFileSync(join(root, path), content);
 }
 
+export const releaseAgePolicy = 'minimumReleaseAge: 10080\nminimumReleaseAgeStrict: true\nminimumReleaseAgeIgnoreMissingTime: false\n';
+
 function readOutputs(path: string): Record<string, string> {
   return Object.fromEntries(readFileSync(path, 'utf8').split('\n').filter(Boolean).map((line) => {
     const separator = line.indexOf('=');
@@ -196,6 +198,7 @@ export function fixture(t: TestContext, files: Record<string, string> = { 'mise.
   git(repo, 'config', 'user.email', 'test@example.invalid');
   write(repo, 'mise.toml', `[tools]\nnode = "${process.versions.node}"\npnpm = "12.10.1"\n`);
   write(repo, 'package.json', JSON.stringify({ engines: { node: process.versions.node }, packageManager: 'pnpm@12.10.1' }) + '\n');
+  write(repo, 'pnpm-workspace.yaml', releaseAgePolicy);
   for (const [path, content] of Object.entries(files)) write(repo, path, content);
   git(repo, 'add', '.');
   git(repo, 'commit', '-m', 'initial fixture');
@@ -204,7 +207,10 @@ export function fixture(t: TestContext, files: Record<string, string> = { 'mise.
   const base = git(repo, 'rev-parse', 'HEAD');
   writeFileSync(join(bin, 'mise'), fakeMise, { mode: 0o755 });
   const fallback = join(root, 'fallback'); mkdirSync(fallback);
-  writeFileSync(join(bin, 'pnpm'), '#!/bin/sh\nif [ "$1" = --version ]; then echo 12.10.1; fi\n', { mode: 0o755 });
+  writeFileSync(join(bin, 'pnpm'), `#!/bin/sh
+if [ "$1" = --version ]; then echo 12.10.1; fi
+if [ "$1" = config ]; then echo '{"minimumReleaseAge":10080,"minimumReleaseAgeStrict":true,"minimumReleaseAgeIgnoreMissingTime":false}'; fi
+`, { mode: 0o755 });
   const log = join(root, 'mise.log');
   writeFileSync(log, '');
   const output = join(runnerTemp, 'update.output');
