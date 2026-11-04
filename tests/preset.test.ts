@@ -411,8 +411,9 @@ test('npm caret ranges keep in-range declarations and propose manual major updat
   }
   const nodeTypes = extracted.deps.find((dependency) => dependency.depName === '@types/node');
   assert(nodeTypes?.currentValue);
-  assert.equal(npmVersioning.matches('24.0.0', nodeTypes.currentValue), true);
-  assert.equal(npmVersioning.matches('26.0.0', nodeTypes.currentValue), false);
+  const nodeTypesMajor = Number(nodeTypes.currentValue.slice(1).split('.')[0]);
+  assert.equal(npmVersioning.matches(`${nodeTypesMajor}.0.0`, nodeTypes.currentValue), true);
+  assert.equal(npmVersioning.matches(`${nodeTypesMajor + 1}.0.0`, nodeTypes.currentValue), false);
 
   const [minor, major] = await updates('npm', [
     { ...dep('example-range', 'minor', '1.0.0', '1.1.0'), currentValue: '^1.0.0' },
