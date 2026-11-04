@@ -7,7 +7,12 @@ zizmor = "1.31.1"
 
 [tasks.bootstrap]
 description = "Install locked Node dependencies"
+depends = ["policy"]
 run = "pnpm install --frozen-lockfile"
+
+[tasks.policy]
+description = "Check pnpm's seven-day release-age policy without installing dependencies"
+run = "node .github/actions/pnpm-outputs/check-release-age.mjs"
 
 [tasks.check]
 description = "Validate the preset, TypeScript, workflows, and regression cases"

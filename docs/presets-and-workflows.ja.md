@@ -8,13 +8,14 @@ Renovateが更新する依存を選び、利用先が生成部品を組み合わ
 
 | 利用先の構成 | 追加するpreset | 同じ準備ジョブで呼ぶ順番 |
 | --- | --- | --- |
+| mise・Vite+の生成を使わないpnpm | 不要 | Node・pnpmの準備 → 入力なしの`pnpm-outputs`（検証のみ） |
 | mise管理のNode・pnpm | `mise-pnpm` | `mise-pnpm` → `pnpm-outputs` |
 | 上記＋pnpm管理のVite+ | `mise-pnpm`・`viteplus` | `mise-pnpm` → `pnpm-viteplus` → `pnpm-outputs` |
 | 利用先で準備したNode・pnpm＋pnpm管理のVite+ | `viteplus` | Node・pnpmの準備 → `pnpm-viteplus` → `pnpm-outputs` |
 
 Nixなど別の方法でNode・pnpmを準備する場合も、Vite+には同じ部品を接続できます。ただし、Nix実環境での一連の動作は未検証です。Nixの宣言・lockfileの生成と整合検証は利用先が担当し、`mise-pnpm` preset・actionは選びません。
 
-更新時だけ、別ジョブで`publish-pnpm-artifacts.yml`を呼びます。部品ごとにコミット・pushはしません。
+生成した更新結果を公開するときだけ、別ジョブで`publish-pnpm-artifacts.yml`を呼びます。部品ごとにコミット・pushはしません。入力なしでpnpmを検証するだけなら公開ジョブは不要で、pnpmを使わないプロジェクトにはpnpm部品自体が不要です。
 
 | 責務 | 担当 |
 | --- | --- |
@@ -27,6 +28,10 @@ Nixなど別の方法でNode・pnpmを準備する場合も、Vite+には同じ�
 | App認証・コミット・push | [`publish-pnpm-artifacts.yml`](../.github/workflows/publish-pnpm-artifacts.yml)。依存を実行しない |
 | 対象OS、互換性、生成タスク、必須チェック、リリース | 利用先 |
 
+[`pnpm-outputs`が待機方針](release-age.ja.md)も追加生成・最終frozen installの前に
+検証するため、既存のaction呼び出しを増やす必要はありません。mise・Vite+の準備stateを
+渡さない場合は、方針とfrozen lockfileの検証だけを行い、生成・公開は行いません。
+
 pnpm更新時のnpm artifact生成はRenovateに残します。補助actionは、更新途中の古いpnpm管理情報を修復しません。初回frozen installに失敗したら、先にRenovateのartifact生成結果と失敗ログを確認してください。
 
 ## 導入条件
@@ -37,6 +42,7 @@ pnpm更新時のnpm artifact生成はRenovateに残します。補助actionは�
 2. `extends`に共通defaultと構成に合うpresetを追加します。presetだけではactionは動きません。
 3. callerの準備ジョブにcheckout（`persist-credentials: false`）とツール準備を用意し、上表の順で部品を呼びます。mise構成ではmise-action（`install: false`）を使い、それ以外では利用先がNode・pnpmをPATHへ置きます。更新・検証には同じlock group、タスク、公開パスを渡します。
 4. 更新・検証の双方でCIを動かします。更新はMend Renovateのpushかつ`renovate/`ブランチに限定し、Appによる補助pushは検証として扱います。
+5. pnpmに7日以上の待機を設定し、`pnpm-outputs`を含むCIジョブを必須化します。必要な場合はレビュー済みのバージョン限定例外を用意します。[方針と移行手順](release-age.ja.md)を参照してください。
 
 mise構成の整合検査：`mise-pnpm`は宣言文字列や実行ファイルの保存場所ではなく、lockedで選ばれた版と実行版を照合します。同じ版を実行するshim・wrapperも利用できます。不一致・未追跡lockfileはエラーで、修復しません。以下は`mise-pnpm`を使う場合の条件です。
 
@@ -116,6 +122,7 @@ miseなしのVite+：checkoutとNode・pnpmの準備後に、次の部品を呼�
 | Vite+準備 | `preparation-state`（省略可） | 先行部品のモードと準備済みファイルを引き継ぐ。miseのコマンドや設定形式には依存しない |
 | Vite+準備 | 出力`state` | 最終検証へ渡す。Node・pnpmの準備方法にかかわらず同じ出力を使う |
 | 最終検証 | `mise-state`・`viteplus-state` | 呼んだ部品の出力だけ渡す。モードはstateから決定し、リポジトリ・コミット・モードの一致を確認 |
+| 準備stateなしの最終検証 | 入力なし | 待機方針とfrozen installの検証のみ。生成・stage・公開はしない |
 | 最終検証 | `post-update-task`（既定空） | 追加生成用のmiseタスク。指定時はmiseが必要 |
 | 最終検証 | `post-update-paths`（既定空） | 公開する追加生成物のファイル・ディレクトリ。指定しても生成処理は実行されない |
 | 最終検証 | 出力`base`・`changed`・`artifact-id` | 全検証が成功した更新だけpayloadをupload。検証モードではuploadしない |
@@ -132,7 +139,7 @@ lock groupの例：
 
 追加生成タスクは依存宣言、有効なmise設定、管理対象lockfile・sidecarを変更できません。設定の追加・削除も拒否します。`post-update-paths`への指定では制限を解除できません。追加生成物の作成・変更・削除は可能です。依存を更新していた既存タスクは、タスク開始前の準備処理へ移してください。
 
-最終検証：追加生成の後、`mise-state`を渡した場合はmiseのlocked検証を行います。どちらの構成でも同じ実行環境・オプションでfrozen installを行い、`viteplus-state`を渡した場合はVite+の宣言・依存グラフも検証します。Vite+はcoverageと内蔵Vitestの一致、一つのVitestインスタンス、Vite core alias、選択済みVite+と無関係な依存が変わっていないことを確認します。検証モードでは宣言・pnpm lockfileを修復しません。
+最終検証：同じcheckout・コミットで準備部品を呼んだ場合、そのstateは必須です。接続漏れを単独検証として扱わずエラーにします。単独検証やmiseなしの検証で、他の準備処理の一覧を消去することはありません。追加生成の後、`mise-state`を渡した場合はmiseのlocked検証を行います。どちらの構成でも同じ実行環境・オプションでfrozen installを行い、`viteplus-state`を渡した場合はVite+の宣言・依存グラフも検証します。Vite+はcoverageと内蔵Vitestの一致、一つのVitestインスタンス、Vite core alias、選択済みVite+と無関係な依存が変わっていないことを確認します。検証モードでは宣言・pnpm lockfileを修復しません。
 
 ## 利用先に残る記述
 
@@ -140,6 +147,7 @@ lock groupの例：
 | --- | --- |
 | 部品の選択・接続 | Node・pnpmの準備方法を選び、必要な部品と最終検証を同じ準備ジョブで呼ぶ。stateと公開用出力を接続 |
 | 固有値 | 採用バージョン、lock group、生成タスク、生成物パス。更新・検証で同じ値を渡す |
+| 待機方針 | pnpm設定とレビュー済みの完全バージョン例外を追跡し、独立したpnpm rootごとに`pnpm-outputs`のCIを必須化 |
 | 公開許可 | 別ジョブのApp認証と、公開する部品・追加パスを明示。生成ジョブの出力から許可を導かない |
 | 任意の命名 | workflow名、ステップID、環境変数名、Secret名 |
 

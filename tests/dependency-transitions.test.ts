@@ -4,7 +4,7 @@ import { readFileSync, rmSync, symlinkSync } from 'node:fs';
 import { join } from 'node:path';
 import { test } from 'node:test';
 import { parseAllDocuments } from 'yaml';
-import { fixture, git, write } from './helpers/pnpm-artifacts.ts';
+import { fixture, git, write, releaseAgePolicy } from './helpers/pnpm-artifacts.ts';
 import { packageRegistry } from './helpers/package-registry.ts';
 
 for (const transition of ['node', 'pnpm', 'viteplus', 'node+viteplus', 'pnpm+viteplus', 'npm', 'maintenance'] as const) {
@@ -27,7 +27,7 @@ for (const transition of ['node', 'pnpm', 'viteplus', 'node+viteplus', 'pnpm+vit
       devDependencies: { 'vite-plus': '1.0.0', '@vitest/coverage-v8': '5.0.1', ordinary: '^1.0.0' },
     };
     write(f.repo, 'package.json', `${JSON.stringify(project, null, 2)}\n`);
-    write(f.repo, 'pnpm-workspace.yaml', "pmOnFail: error\noverrides:\n  vite: npm:@voidzero-dev/vite-plus-core@1.0.0\n  vitest: 5.0.1\n");
+    write(f.repo, 'pnpm-workspace.yaml', releaseAgePolicy + "pmOnFail: error\noverrides:\n  vite: npm:@voidzero-dev/vite-plus-core@1.0.0\n  vitest: 5.0.1\n");
     pnpm('install', '--no-frozen-lockfile');
     write(f.repo, 'mise.toml', `[tools]\nnode = "${process.versions.node}"\npnpm = "${registry.pnpmVersion}"\n`);
     git(f.repo, 'add', '.'); git(f.repo, 'commit', '-m', 'initial synchronized graph');
@@ -101,7 +101,7 @@ for (const verifyOnly of [false, true]) {
         name: 'final-validation-fixture', private: true, engines: { node: process.versions.node }, packageManager: `pnpm@${registry.pnpmVersion}`,
         devDependencies: { 'vite-plus': '1.0.0', '@vitest/coverage-v8': '5.0.1' },
       }) + '\n');
-      write(f.repo, 'pnpm-workspace.yaml', 'pmOnFail: error\noverrides:\n  vite: npm:@voidzero-dev/vite-plus-core@1.0.0\n  vitest: 5.0.1\n');
+      write(f.repo, 'pnpm-workspace.yaml', releaseAgePolicy + 'pmOnFail: error\noverrides:\n  vite: npm:@voidzero-dev/vite-plus-core@1.0.0\n  vitest: 5.0.1\n');
       execFileSync(executable, ['install', '--no-frozen-lockfile', '--ignore-scripts', '--ignore-pnpmfile', '--pm-on-fail=error'], {
         cwd: f.repo, env: { ...process.env, ...registry.env }, stdio: ['ignore', 'pipe', 'pipe'],
       });

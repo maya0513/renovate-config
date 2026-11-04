@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 root=$(git rev-parse --show-toplevel)
-lockfiles="${RUNNER_TEMP:?}/mise-lockfiles"
-artifacts="$RUNNER_TEMP/mise-lock-artifacts"
+lockfiles="${lockfiles:-${RUNNER_TEMP:?}/mise-lockfiles}"
+artifacts="${artifacts:-$RUNNER_TEMP/mise-lock-artifacts}"
 
 snapshot_dependencies() {
   local lock path entry

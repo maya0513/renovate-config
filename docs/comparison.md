@@ -2,7 +2,7 @@
 
 [日本語](comparison.ja.md)
 
-Snapshot: 2026-10-13, Renovate 44.145.1. Includes inherited defaults; excludes consumer and bot-host overrides.
+External baseline: 2026-10-13, Renovate 44.145.1; this repository's column follows its current configuration. Includes inherited defaults; excludes consumer and bot-host overrides.
 Sources: this repository's [`default.json`](../default.json) and [jdx at `d574ac27`](https://github.com/jdx/renovate-config/blob/d574ac27d15201ebe7f30af8a9ab1bb90dd23bb0/default.json).
 
 ## Shared preset
@@ -15,7 +15,7 @@ The official [`config:best-practices`](https://docs.renovatebot.com/presets-conf
 | [Manager detection](https://docs.renovatebot.com/configuration-options/#enabledmanagers) | Default-enabled managers | Same; no allowlist | Same; Go directive exception below | Same; no allowlist |
 | Ignored paths | Dependencies, examples, tests, fixtures | Same as `config:recommended` | `config:recommended` + `**/.mise/locks/**`, `**/.config/mise/locks/**` | Same as `local>jdx/renovate-config` |
 | [Schedule / timezone](https://docs.renovatebot.com/configuration-options/#schedule) | Any time / UTC | Any time / UTC | Tuesday / `America/Chicago` | Tuesday / `Asia/Tokyo` |
-| [Release age](https://docs.renovatebot.com/key-concepts/minimum-release-age/) | No global delay | npm datasource: `3 days`; no global delay | `7 days`; named jdx packages have exceptions | `7 days` |
+| [Release age](https://docs.renovatebot.com/key-concepts/minimum-release-age/) | No global delay | npm datasource: `3 days`; no global delay | `7 days`; named jdx packages have exceptions | `7 days`; no shared maintenance exemption |
 | [Internal check filtering](https://docs.renovatebot.com/configuration-options/#internalchecksfilter) | `strict` | `strict` | `strict` inherited | `strict` |
 | [Dependency Dashboard](https://docs.renovatebot.com/configuration-options/#dependencydashboard) | Enabled | Enabled | Disabled | Disabled |
 | [Clone submodules](https://docs.renovatebot.com/configuration-options/#clonesubmodules) | Disabled | Disabled | Enabled | Enabled |
@@ -33,7 +33,7 @@ The official [`config:best-practices`](https://docs.renovatebot.com/presets-conf
 | [Docker digest pinning](https://docs.renovatebot.com/presets-docker/#dockerpindigests) | Not enforced | Enabled | Enabled | Enabled |
 | Config migration PRs | Disabled | Enabled | Enabled | Enabled |
 | [Abandonment rules](https://docs.renovatebot.com/presets-abandonments/#abandonmentsrecommended) | No abandonment preset | `abandonments:recommended` | `abandonments:recommended` | `abandonments:recommended` |
-| [Lockfile maintenance](https://docs.renovatebot.com/configuration-options/#lockfilemaintenance) | Disabled | Before 04:00 Monday UTC; manual merge | Before 04:00 Monday Chicago time; `7 days`; automerge | Tuesday JST; automerge |
+| [Lockfile maintenance](https://docs.renovatebot.com/configuration-options/#lockfilemaintenance) | Disabled | Before 04:00 Monday UTC; manual merge | Before 04:00 Monday Chicago time; `7 days`; automerge | Tuesday JST; automerge eligible; age check retained until the consumer explicitly exempts maintenance |
 | [Vulnerability fixes](https://docs.renovatebot.com/configuration-options/#vulnerabilityalerts) | No schedule or release-age delay; manual merge | Same as `config:recommended` | Same bypass; global automerge also covers major | Same bypass; non-major automerge, major manual |
 | Package-specific exceptions | Community preset rules | Community rules + npm age exemptions below | Named jdx crates bypass both delay and schedule; named jdx tools bypass delay | Runner changes and this repository's reusable workflow revisions require review; workflow revisions bypass the age delay |
 | Go-specific overrides | None added | None added | Disable updates to the `go` directive; enable `gomodTidy` | None added |
@@ -47,6 +47,7 @@ Notes on the comparison:
 - **Best-practices exceptions**: npm age rules exempt maintenance, replacements, pins and update types without timestamps. Development pinning matches `devDependencies`, `dev-dependencies` and `dev`. [Age rules](https://docs.renovatebot.com/presets-security/#securityminimumreleaseagenpm), [pinning rules](https://docs.renovatebot.com/presets-default/#pindevdependencies)
 - **Custom preset automerge**: both jdx and this repository include `0.x`, unlike Renovate's [optional example](https://docs.renovatebot.com/key-concepts/automerge/#automerge-non-major-updates). jdx major eligibility is inferred from global `automerge: true` and no disabling major rule at the captured revision.
 - **`update-lockfile`**: in-range updates keep declarations; out-of-range updates change the range. [Details](https://docs.renovatebot.com/configuration-options/#rangestrategy)
+- **pnpm release age**: consumers require at least seven days in pnpm; `pnpm-outputs` checks the policy and frozen installation. Only protected consumers explicitly exempt maintenance's Renovate timestamp check in their own config, so shared updates do not weaken old callers. Urgent fixes use reviewed exact-version exceptions; Renovate's security bypass does not override pnpm. Other npm-manager package managers must provide equivalent protection before an exemption. [Policy and migration](release-age.md)
 
 ## Companion automation
 

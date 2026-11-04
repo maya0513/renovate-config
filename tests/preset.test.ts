@@ -225,7 +225,7 @@ test('security fixes bypass schedule and release age while preserving the merge 
   }
 });
 
-test('weekly lockfile maintenance keeps platform-native automerge', async () => {
+test('shared lockfile maintenance keeps its age check until the consumer adopts package-manager protection', async () => {
   const all = await flattenUpdates(config, { npm: [{ packageFile: 'package.json', deps: [] }] });
   const maintenance = all.find((update) => update.isLockFileMaintenance);
   assert(maintenance);
@@ -233,6 +233,27 @@ test('weekly lockfile maintenance keeps platform-native automerge', async () => 
   assert.equal(maintenance.ignoreTests, false);
   assert.equal(maintenance.platformAutomerge, true);
   assert.deepEqual(maintenance.schedule, ['* * * * 2']);
+  assert.equal(maintenance.minimumReleaseAge, '7 days');
+  assert.equal(checkMinimumReleaseAge(maintenance, null).isPending, true);
+});
+
+test('only the protected repository opts out of npm maintenance timestamps without changing shared defaults', async () => {
+  const ownConfig: RenovateConfig = JSON.parse(readFileSync(new URL('../renovate.json', import.meta.url), 'utf8'));
+  const ownResolved = mergeChildConfig(config, await resolveLocalConfig(preset, ownConfig));
+  const maintenance = (await flattenUpdates(ownResolved, { npm: [{ packageFile: 'package.json', deps: [] }] }))
+    .find(update => update.isLockFileMaintenance);
+  assert(maintenance);
+  assert.equal(maintenance.minimumReleaseAge, null);
+  assert.equal(checkMinimumReleaseAge(maintenance, null).isPending, false);
+  for (const [manager, datasource] of technologies) {
+    const all = await flattenUpdates(ownResolved, { [manager]: [{ packageFile: 'fixture', deps: [dep('example', 'patch', '1.0.0', '1.0.1', datasource)] }] });
+    assert.equal(all.find(update => !update.isLockFileMaintenance)?.minimumReleaseAge, '7 days');
+    const maintenance = all.find(update => update.isLockFileMaintenance);
+    if (maintenance) assert.equal(maintenance.minimumReleaseAge, manager === 'npm' ? null : '7 days');
+  }
+  const unmodified = (await flattenUpdates(config, { npm: [{ packageFile: 'package.json', deps: [] }] }))
+    .find(update => update.isLockFileMaintenance);
+  assert.equal(unmodified?.minimumReleaseAge, '7 days');
 });
 
 test('artifact status reports failures only', async () => {
@@ -390,8 +411,9 @@ test('npm caret ranges keep in-range declarations and propose manual major updat
   }
   const nodeTypes = extracted.deps.find((dependency) => dependency.depName === '@types/node');
   assert(nodeTypes?.currentValue);
-  assert.equal(npmVersioning.matches('24.0.0', nodeTypes.currentValue), true);
-  assert.equal(npmVersioning.matches('26.0.0', nodeTypes.currentValue), false);
+  const nodeTypesMajor = Number(nodeTypes.currentValue.slice(1).split('.')[0]);
+  assert.equal(npmVersioning.matches(`${nodeTypesMajor}.0.0`, nodeTypes.currentValue), true);
+  assert.equal(npmVersioning.matches(`${nodeTypesMajor + 1}.0.0`, nodeTypes.currentValue), false);
 
   const [minor, major] = await updates('npm', [
     { ...dep('example-range', 'minor', '1.0.0', '1.1.0'), currentValue: '^1.0.0' },

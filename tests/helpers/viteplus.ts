@@ -47,6 +47,7 @@ export function fixture(t: TestContext, options: ViteplusOptions = {}) {
 import fs from 'node:fs';
 const args = process.argv.slice(2);
 if (args[0] === '--version') { console.log('12.10.1'); process.exit(0); }
+if (args[0] === 'config') { console.log(JSON.stringify({minimumReleaseAge:10080,minimumReleaseAgeStrict:true,minimumReleaseAgeIgnoreMissingTime:false})); process.exit(0); }
 fs.appendFileSync(${JSON.stringify(pnpmLog)}, JSON.stringify(args) + '\\n');
 if (${Boolean(options.fail)}) process.exit(1);
 if (args[0] === 'update' || args.includes('--no-frozen-lockfile')) {
