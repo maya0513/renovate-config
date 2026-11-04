@@ -11,8 +11,9 @@ export async function packageRegistry(t: TestContext, root: string, pnpmVersions
   const directory = join(root, 'registry');
   mkdirSync(directory);
   const definitions: Record<string, Record<string, unknown>> = {};
+  const times: Record<string, Record<string, string>> = {};
   let serial = 0;
-  function add(name: string, version: string, dependencies: Record<string, string> = {}) {
+  function add(name: string, version: string, dependencies: Record<string, string> = {}, publishedAt: string | null = '2000-01-01T00:00:00.000Z') {
     const id = String(serial++);
     const staging = join(directory, id, 'package');
     mkdirSync(staging, { recursive: true });
@@ -23,6 +24,7 @@ export async function packageRegistry(t: TestContext, root: string, pnpmVersions
     execFileSync('tar', ['czf', tarball, '-C', join(directory, id), 'package']);
     const integrity = `sha512-${createHash('sha512').update(readFileSync(tarball)).digest('base64')}`;
     (definitions[name] ??= {})[version] = { ...manifest, dist: { tarball: `${id}.tgz`, integrity } };
+    if (publishedAt !== null) (times[name] ??= {})[version] = publishedAt;
   }
   const pnpmVersion = execFileSync('pnpm', ['--version'], { encoding: 'utf8' }).trim();
   for (const version of new Set([pnpmVersion, ...pnpmVersions])) add('pnpm', version);
@@ -35,7 +37,8 @@ export async function packageRegistry(t: TestContext, root: string, pnpmVersions
   add('ordinary', '1.0.0', { transitive: '1.0.0' });
   add('transitive', '1.0.0');
   const metadata = join(directory, 'metadata.json');
-  writeFileSync(metadata, JSON.stringify(definitions));
+  const save = () => writeFileSync(metadata, JSON.stringify({ definitions, times }));
+  save();
   const server = join(directory, 'server.mjs');
   writeFileSync(server, `
 import { createServer } from 'node:http';
@@ -48,13 +51,13 @@ const server = createServer((req, res) => {
     res.end(readFileSync(join(root, name)));
     return;
   }
-  const definitions = JSON.parse(readFileSync(join(root, 'metadata.json'), 'utf8'));
+  const { definitions, times } = JSON.parse(readFileSync(join(root, 'metadata.json'), 'utf8'));
   if (!definitions[name]) { res.writeHead(404); res.end('{}'); return; }
   const versions = Object.fromEntries(Object.entries(definitions[name]).map(([version, pkg]) => [version, {
     ...pkg, dist: { ...pkg.dist, tarball: 'http://127.0.0.1:' + server.address().port + '/' + pkg.dist.tarball },
   }]));
   res.setHeader('content-type', 'application/json');
-  res.end(JSON.stringify({ name, versions, 'dist-tags': { latest: Object.keys(versions).at(-1) } }));
+  res.end(JSON.stringify({ name, versions, time: times[name], 'dist-tags': { latest: Object.keys(versions).at(-1) } }));
 });
 server.listen(0, '127.0.0.1', () => process.send(server.address().port));
 `);
@@ -79,7 +82,11 @@ server.listen(0, '127.0.0.1', () => process.send(server.address().port));
     },
     publishOrdinary() {
       add('ordinary', '1.0.1', { transitive: '1.0.0' });
-      writeFileSync(metadata, JSON.stringify(definitions));
+      save();
+    },
+    publish(name: string, version: string, dependencies: Record<string, string> = {}, publishedAt?: string | null) {
+      add(name, version, dependencies, publishedAt);
+      save();
     },
   };
 }

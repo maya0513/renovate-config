@@ -29,6 +29,68 @@ test('default verification refuses generated differences rather than accepting r
   f.assertUnpublished(); f.assertNoPayload();
 });
 
+test('an omitted mise-state fails without erasing inventories or hiding a pending lockfile difference', t => {
+  const f = fixture(t);
+  const mise = f.runComponent('mise-pnpm');
+  const inventory = join(f.runnerTemp, 'mise-lock-artifacts');
+  const locks = join(f.runnerTemp, 'mise-lockfiles');
+  const before = [readFileSync(inventory), readFileSync(locks)];
+  assert.throws(() => f.runComponent('pnpm-outputs'), failure(/Pass mise-state/));
+  assert.deepEqual([readFileSync(inventory), readFileSync(locks)], before);
+  assert.throws(() => f.runComponent('pnpm-outputs', { 'mise-state': mise.outputs.state! }), failure(/Dependency artifacts are out of date/));
+  assert.equal(git(f.repo, 'diff', 'HEAD', '--name-only'), 'mise.lock');
+  f.assertUnpublished(); f.assertNoPayload();
+});
+
+test('an omitted Vite+ state cannot silently switch to plain pnpm verification', t => {
+  const f = viteFixture(t, { aligned: true });
+  const vite = f.runComponent('pnpm-viteplus');
+  assert.throws(() => f.runComponent('pnpm-outputs'), failure(/Pass viteplus-state/));
+  assert(!existsSync(join(f.runnerTemp, 'mise-lockfiles')));
+  assert(!existsSync(join(f.runnerTemp, 'mise-lock-artifacts')));
+  const result = f.runComponent('pnpm-outputs', { 'viteplus-state': vite.outputs.state! });
+  assert.equal(result.outputs.changed, 'false');
+  f.assertUnpublished(); f.assertNoPayload();
+});
+
+for (const missing of ['mise-state', 'viteplus-state']) {
+  test(`a combined preparation must not omit ${missing} at final validation`, t => {
+    const f = viteFixture(t, { aligned: true });
+    const mise = f.runComponent('mise-pnpm');
+    const vite = f.runComponent('pnpm-viteplus', { 'preparation-state': mise.outputs.state! });
+    const selected: Record<string, string> = { 'mise-state': mise.outputs.state!, 'viteplus-state': vite.outputs.state! };
+    delete selected[missing];
+    assert.throws(() => f.runComponent('pnpm-outputs', selected), failure(new RegExp(`Pass ${missing}`)));
+    assert.equal(f.runComponent('pnpm-outputs', {
+      'mise-state': mise.outputs.state!, 'viteplus-state': vite.outputs.state!,
+    }).outputs.changed, 'false');
+    f.assertUnpublished(); f.assertNoPayload();
+  });
+}
+
+for (const consumer of ['plain', 'viteplus']) {
+  test(`${consumer} validation in another checkout preserves the pending mise preparation in shared runner temp`, t => {
+    const f = fixture(t);
+    const mise = f.runComponent('mise-pnpm');
+    const paths = ['mise-lockfiles', 'mise-lock-artifacts'].map(name => join(f.runnerTemp, name));
+    const before = paths.map(path => readFileSync(path));
+    const other = consumer === 'plain' ? fixture(t) : viteFixture(t, { aligned: true });
+    const env = { RUNNER_TEMP: f.runnerTemp };
+    if (consumer === 'plain') {
+      assert.equal(other.runComponent('pnpm-outputs', {}, env).outputs.changed, 'false');
+    } else {
+      const vite = other.runComponent('pnpm-viteplus', { 'verify-only': 'false' }, env);
+      assert.equal(other.runComponent('pnpm-outputs', {
+        'viteplus-state': vite.outputs.state!, 'post-update-task': 'generate', 'post-update-paths': 'generated.txt',
+      }, { ...env, TASK_SCRIPT: 'printf "generated output\\n" > generated.txt' }).outputs.changed, 'true');
+    }
+    assert.deepEqual(paths.map(path => readFileSync(path)), before);
+    assert.throws(() => f.runComponent('pnpm-outputs', { 'mise-state': mise.outputs.state! }), failure(/Dependency artifacts are out of date/));
+    assert.equal(git(f.repo, 'diff', 'HEAD', '--name-only'), 'mise.lock');
+    f.assertUnpublished(); other.assertUnpublished();
+  });
+}
+
 for (const [event, ref, sender] of [
   ['pull_request', 'refs/pull/1/merge', 29139614], ['workflow_dispatch', 'refs/heads/main', 29139614],
   ['push', 'refs/heads/main', 29139614], ['push', 'refs/heads/renovate/test', 123],
@@ -118,7 +180,7 @@ test('the final check rejects a different pnpm version before creating a payload
   const f = fixture(t); const mise = f.runComponent('mise-pnpm', { 'verify-only': 'false' });
   write(f.root, 'other/pnpm', '#!/bin/sh\necho 12.0.0\n'); chmodSync(join(f.root, 'other/pnpm'), 0o755);
   appendFileSync(join(f.runnerTemp, 'path'), join(f.root, 'other') + '\n');
-  assert.throws(() => f.runComponent('pnpm-outputs', { 'mise-state': mise.outputs.state! }), failure(/running pnpm version must match the locked version/));
+  assert.throws(() => f.runComponent('pnpm-outputs', { 'mise-state': mise.outputs.state! }), failure(/running pnpm version must match the locked version|Use stable pnpm 12.10.1/));
   f.assertUnpublished(); f.assertNoPayload();
 });
 

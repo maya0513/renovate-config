@@ -2,7 +2,7 @@
 
 [English](comparison.md)
 
-確認時点：2026-10-13・Renovate 44.145.1。継承される標準値を含み、利用先・Bot運営側の上書きは含みません。
+外部設定の比較基準：2026-10-13・Renovate 44.145.1。本リポジトリの列は現在の設定に追従します。継承される標準値を含み、利用先・Bot運営側の上書きは含みません。
 参照元：本リポジトリの[`default.json`](../default.json)、jdxの[`d574ac27`時点の設定](https://github.com/jdx/renovate-config/blob/d574ac27d15201ebe7f30af8a9ab1bb90dd23bb0/default.json)。
 
 ## 共通preset
@@ -15,7 +15,7 @@
 | [検出するmanager](https://docs.renovatebot.com/configuration-options/#enabledmanagers) | 標準で有効なmanager | 同じ。許可リストで限定しない | 同じ。ただしGoのdirectiveは後述の例外あり | 同じ。許可リストで限定しない |
 | 除外パス | 依存物・examples・tests・fixtures | `config:recommended`と同じ | `config:recommended`＋`**/.mise/locks/**`・`**/.config/mise/locks/**` | `local>jdx/renovate-config`と同じ |
 | [曜日・タイムゾーン](https://docs.renovatebot.com/configuration-options/#schedule) | 常時・UTC | 常時・UTC | 火曜日・`America/Chicago` | 火曜日・`Asia/Tokyo` |
-| [リリース待機](https://docs.renovatebot.com/key-concepts/minimum-release-age/) | 全体の待機指定なし | npm datasourceに`3 days`。全体の待機指定なし | `7 days`。指定されたjdxパッケージには例外あり | `7 days` |
+| [リリース待機](https://docs.renovatebot.com/key-concepts/minimum-release-age/) | 全体の待機指定なし | npm datasourceに`3 days`。全体の待機指定なし | `7 days`。指定されたjdxパッケージには例外あり | `7 days`。共通のロック保守免除なし |
 | [内部チェックのフィルター](https://docs.renovatebot.com/configuration-options/#internalchecksfilter) | `strict` | `strict` | 標準の`strict`を継承 | `strict` |
 | [Dependency Dashboard](https://docs.renovatebot.com/configuration-options/#dependencydashboard) | 有効 | 有効 | 無効 | 無効 |
 | [submoduleの取得](https://docs.renovatebot.com/configuration-options/#clonesubmodules) | 無効 | 無効 | 有効 | 有効 |
@@ -33,7 +33,7 @@
 | [Dockerのdigest固定](https://docs.renovatebot.com/presets-docker/#dockerpindigests) | 強制しない | 有効 | 有効 | 有効 |
 | 設定移行PR | 無効 | 有効 | 有効 | 有効 |
 | [保守停止の判定ルール](https://docs.renovatebot.com/presets-abandonments/#abandonmentsrecommended) | 専用presetなし | `abandonments:recommended` | `abandonments:recommended` | `abandonments:recommended` |
-| [lockfile maintenance](https://docs.renovatebot.com/configuration-options/#lockfilemaintenance) | 無効 | UTCの月曜日04:00より前・手動マージ | Chicago時間の月曜日04:00より前・`7 days`・自動マージ | 日本時間の火曜日・自動マージ |
+| [lockfile maintenance](https://docs.renovatebot.com/configuration-options/#lockfilemaintenance) | 無効 | UTCの月曜日04:00より前・手動マージ | Chicago時間の月曜日04:00より前・`7 days`・自動マージ | 日本時間の火曜日・自動マージ対象。利用先が明示的に免除するまで待機判定を維持 |
 | [脆弱性修正](https://docs.renovatebot.com/configuration-options/#vulnerabilityalerts) | 曜日・待機の制限なし。手動マージ | `config:recommended`と同じ | 同じ例外。majorも全体の自動マージ対象 | 同じ例外。non-majorは自動、majorは手動 |
 | パッケージ別の例外 | コミュニティpresetのルール | コミュニティのルール＋後述のnpm待機の例外 | 指定されたjdx cratesは曜日・待機を免除。指定されたjdxツールは待機を免除 | runnerと本リポジトリのaction・再利用workflow更新は手動レビュー。後者は待機免除 |
 | Go固有の上書き | 追加なし | 追加なし | `go` directiveの更新を無効化し、`gomodTidy`を有効化 | 追加なし |
@@ -47,6 +47,7 @@
 - **best-practicesの例外**：npm待機はmaintenance・置き換え・pin・タイムスタンプのない更新種別を除外。開発用依存の固定は`devDependencies`・`dev-dependencies`・`dev`が対象です。[待機ルール](https://docs.renovatebot.com/presets-security/#securityminimumreleaseagenpm)・[固定ルール](https://docs.renovatebot.com/presets-default/#pindevdependencies)
 - **独自presetの自動マージ**：jdx・本リポジトリとも`0.x`を含みます。Renovateの[任意導入用の例](https://docs.renovatebot.com/key-concepts/automerge/#automerge-non-major-updates)とは異なります。jdxのmajorは、比較時点の全体設定`automerge: true`と無効化ルールがないことから判定しています。
 - **`update-lockfile`**：範囲内では宣言を維持し、範囲外では宣言範囲も更新します。[仕様](https://docs.renovatebot.com/configuration-options/#rangestrategy)
+- **pnpmの待機**：利用先で7日以上の待機を必須にし、`pnpm-outputs`が方針とfrozen installを検証します。保護導入済みの利用先だけが自身の設定で保守の公開日時チェックを免除し、共通設定の更新で旧callerの保護を弱めません。緊急修正はレビュー済み完全バージョン例外を使い、Renovateのセキュリティ免除だけではpnpm設定を解除しません。npm managerの他のパッケージマネージャーも免除前に同等の保護を用意します。[方針と移行](release-age.ja.md)
 
 ## 補助処理
 

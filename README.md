@@ -23,16 +23,29 @@ The preset follows this repository's `main` branch. No npm installation or relea
 
 See the [configuration comparison](docs/comparison.md) for update policies.
 
+pnpm consumers must configure at least seven days of release-age protection and
+require CI using [`pnpm-outputs`](.github/actions/pnpm-outputs/action.yml), which
+checks both the policy and frozen installation. Existing callers need no extra step.
+Urgent security fixes use reviewed, version-specific exceptions. See the
+[configuration, CI and migration instructions](docs/release-age.md); extending the
+Renovate preset alone does not enforce this policy in pnpm.
+After adopting protection, consumers explicitly exempt maintenance's Renovate age
+check in their own `renovate.json`; the shared default does not grant that exemption.
+
 The shared default includes npm `rangeStrategy: update-lockfile`. Runner changes and this repository's actions and reusable workflows require manual review and shared references update together.
 
 | Configuration | Additional preset | Components composed by the consumer |
 | --- | --- | --- |
+| pnpm without mise/Vite+ generation | None | Prepare Node/pnpm → `pnpm-outputs` without inputs (verification only) |
 | mise-managed Node and pnpm | [`presets/mise-pnpm.json`](presets/mise-pnpm.json) | `mise-pnpm` → `pnpm-outputs` |
 | Above + pnpm-managed Vite+ | Above + [`presets/viteplus.json`](presets/viteplus.json) | `mise-pnpm` → `pnpm-viteplus` → `pnpm-outputs` |
 | Consumer-prepared Node/pnpm + pnpm-managed Vite+ | [`presets/viteplus.json`](presets/viteplus.json) | Prepare Node/pnpm → `pnpm-viteplus` → `pnpm-outputs` |
 
 The Vite+ component does not require mise. Consumers can provision Node/pnpm through Nix or another method, but the complete flow has not been verified in a Nix environment. The optional `post-update-task` input runs mise tasks only.
 
-Preparation and verification use composite actions. Updates publish the validated result through `publish-pnpm-artifacts.yml` in a separate job. Presets do not invoke these components: prepare tracked lockfiles and both update and verification callers first. Renovate retains native npm artifact generation for pnpm updates.
+Preparation and verification use composite actions. When using generation, prepare tracked lockfiles and both update and verification callers; updates publish the validated result through `publish-pnpm-artifacts.yml` in a separate job. Presets do not invoke these components. Renovate retains native npm artifact generation for pnpm updates.
+
+Input-free pnpm verification needs only an ordinary CI call, with no update caller
+or publishing workflow. Projects that do not use pnpm need none of these pnpm components.
 
 For local development, run `mise install --locked`, then `mise run check` to validate configuration, TypeScript, regression tests, workflows and internal actions.
