@@ -141,5 +141,5 @@ CIの必須化をそろえます。その最終SHAの検証成功を確認して
 するか、待機期間の経過を待ちます。通常CIでは修復しません。pnpmの版と生成された
 管理情報もそろえます。本リポジトリは`bootstrap`の前に`mise run policy`で自身の設定を
 検証し、CIと更新準備でも`pnpm-outputs`を呼びます。本リポジトリ自身の免除は
-[`renovate.json`](../renovate.json)で選択しています。他リポジトリへの移行と実CIの確認は
-[Issue #24](https://github.com/maya0513/renovate-config/issues/24)の利用先作業として残ります。
+[`renovate.json`](../renovate.json)で選択しています。他リポジトリへの移行と実CIの確認は、
+利用先ごとの別作業として実施します。

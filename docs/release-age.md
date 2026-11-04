@@ -157,5 +157,4 @@ during ordinary CI. Keep the package-manager version and generated metadata alig
 This repository checks its own configuration through `mise run policy` before the
 `bootstrap` task and uses `pnpm-outputs` in both CI and update preparation. Its own
 exemption is selected in [`renovate.json`](../renovate.json). Migration
-and real CI evidence in other repositories remain consumer work for
-[Issue #24](https://github.com/maya0513/renovate-config/issues/24).
+and real CI verification in other repositories are separate consumer tasks.
