@@ -174,7 +174,7 @@ importers:
         version: 26.6.6
       renovate:
         specifier: ^44.122.0
-        version: 44.206.2(supports-color@7.2.0)(typanion@3.14.0)
+        version: 44.209.0(supports-color@7.2.0)(typanion@3.14.0)
       typescript:
         specifier: ^7.0.2
         version: 7.0.2
@@ -319,6 +319,15 @@ packages:
 
   '@containerbase/base@14.61.0':
     resolution: {integrity: sha512-xzfBD+2gVqU9reHELY5WbdCmDUCqjnPvCscG5/6iKnos7Jxg8M0E3rEdiYUMOHLWoww1+hZZFj5vHarjttTUTg==}
+    engines: {node: '>=24.10.0'}
+    peerDependencies:
+      zod: ^4.0.0
+    peerDependenciesMeta:
+      zod:
+        optional: true
+
+  '@containerbase/base@14.62.0':
+    resolution: {integrity: sha512-S5b8KGMRz/jMwJ6IRiuLfV/ss+sHU+24BInz0C7OFC/SoiFvxNCO/RJPufCpjib3Pbw8+3oWOSMBVUEQDW2Skg==}
     engines: {node: '>=24.10.0'}
     peerDependencies:
       zod: ^4.0.0
@@ -616,8 +625,8 @@ packages:
       '@opentelemetry/api':
         optional: true
 
-  '@renovatebot/base-image@13.154.0':
-    resolution: {integrity: sha512-Z90F5Q5nhHWUi7U/M+n6To+Y3tcrFWJPvFkBOPfybmYNhAEKfI99PtlCvuHz/IeEemEU/DND8n9GeHQv9sDM2w==}
+  '@renovatebot/base-image@13.155.0':
+    resolution: {integrity: sha512-oVSmYRYoKZpM2jcuXSftqIjUZ4/O1gV2iELUe9Sd/33k3sCRFjey9xXivfxrpRRxifybplagPhGP9qt05CZSYg==}
     engines: {node: '>=24.10.0'}
     peerDependencies:
       zod: ^4.0.0
@@ -2206,8 +2215,8 @@ packages:
   remark@15.0.1:
     resolution: {integrity: sha512-Eht5w30ruCXgFmxVUSlNWQ9iiimq07URKeFS3hNc8cUWy1llX4KDWfyEDZRycMc+znsN9Ux5/tJ/BFdgdOwA3A==}
 
-  renovate@44.206.2:
-    resolution: {integrity: sha512-nKaK2sXJQ9XdWeNjC14dLb3aHTIR1DT0mnS95vGkohsQ1V/VFSZ+bLqTlrGXkV7KZKHyuyARf+ybepQ1WZmNGA==}
+  renovate@44.209.0:
+    resolution: {integrity: sha512-+CSWjzTWt7Oh8eHf56glRrwXe6x7QQrVJ4gmqKGTQvhFVEeho5cds0uvMVHcVJwIZALKv0cJwXepJ3qiZzCmRA==}
     engines: {node: ^24.11.0, pnpm: ^11.0.0}
     hasBin: true
 
@@ -2903,6 +2912,12 @@ snapshots:
     optionalDependencies:
       zod: 4.6.7
 
+  '@containerbase/base@14.62.0(zod@4.6.7)':
+    dependencies:
+      semver: 7.8.5
+    optionalDependencies:
+      zod: 4.6.7
+
   '@grpc/grpc-js@1.14.7':
     dependencies:
       '@grpc/proto-loader': 0.8.1
@@ -3208,9 +3223,9 @@ snapshots:
     optionalDependencies:
       '@opentelemetry/api': 1.10.0
 
-  '@renovatebot/base-image@13.154.0(zod@4.6.7)':
+  '@renovatebot/base-image@13.155.0(zod@4.6.7)':
     dependencies:
-      '@containerbase/base': 14.61.0(zod@4.6.7)
+      '@containerbase/base': 14.62.0(zod@4.6.7)
     optionalDependencies:
       zod: 4.6.7
 
@@ -4992,7 +5007,7 @@ snapshots:
     transitivePeerDependencies:
       - supports-color
 
-  renovate@44.206.2(supports-color@7.2.0)(typanion@3.14.0):
+  renovate@44.209.0(supports-color@7.2.0)(typanion@3.14.0):
     dependencies:
       '@aws-sdk/client-codecommit': 3.1139.0
       '@aws-sdk/client-ec2': 3.1139.0
@@ -5025,7 +5040,7 @@ snapshots:
       '@pnpm/parse-overrides': 1001.0.4
       '@qnighy/marshal': 0.1.3
       '@redis/client': 6.3.0(@opentelemetry/api@1.10.0)
-      '@renovatebot/base-image': 13.154.0(zod@4.6.7)
+      '@renovatebot/base-image': 13.155.0(zod@4.6.7)
       '@renovatebot/detect-tools': 5.0.0
       '@renovatebot/good-enough-parser': 3.0.0
       '@renovatebot/osv-offline': 4.5.9(supports-color@7.2.0)(zod@4.6.7)
