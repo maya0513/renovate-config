@@ -28,6 +28,33 @@ test('aligned declarations repair only the lockfile without running package scri
     assert(!call.some(flag => flag.includes('manage-package-manager-versions')));
   }
 });
+test('projects without a coverage declaration synchronize without adding one', t => {
+  const f = fixture(t, { noCoverage: true });
+  f.update();
+  const project = JSON.parse(readFileSync(join(f.repo, 'package.json'), 'utf8'));
+  assert(!('@vitest/coverage-v8' in (project.devDependencies ?? {})));
+  assert(!f.calls().includes('@vitest/coverage-v8'));
+  const state = JSON.parse(readFileSync(join(f.runnerTemp, 'viteplus-state.json'), 'utf8'));
+  assert.equal(state.coverage, false);
+});
+
+test('projects without a coverage declaration pass verification without a payload', t => {
+  const f = fixture(t, { aligned: true, noCoverage: true });
+  f.update({ VERIFY_ONLY: 'true' });
+  assert.equal(f.outputs().changed, 'false');
+  assert(!f.calls().includes('"update"'));
+  f.assertUnpublished(); f.assertNoPayload();
+});
+
+test('final validation skips coverage checks for projects that do not declare it', t => {
+  const f = fixture(t, { aligned: true, noCoverage: true });
+  f.run('locks');
+  f.run('sync');
+  f.run('update');
+  assert.equal(f.outputs().changed, 'false');
+  f.assertUnpublished(); f.assertNoPayload();
+});
+
 test('aligned verification needs no credentials and creates no payload, commit or push', t => {
   const f = fixture(t, { aligned: true });
   f.update({ VERIFY_ONLY: 'true' });
