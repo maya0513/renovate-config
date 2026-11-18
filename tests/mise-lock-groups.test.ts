@@ -107,6 +107,45 @@ test('tracked symlink lockfiles cannot resolve configuration outside the reposit
   assert.equal(readFileSync(f.log, 'utf8'), '');
 });
 
+test('final validation dry-runs only the tools of locked groups', t => {
+  const f = fixture(t);
+  f.update({
+    LOCK_GROUPS: JSON.stringify([
+      { ...groups[0], verify: 'regenerate' },
+      { ...groups[1], verify: 'locked' },
+    ]),
+    CONFIG_TOOLS: '["node", "conda:lua"]',
+    VERIFY_ONLY: 'true', NO_CHANGE: '1',
+  });
+  const calls = readFileSync(f.log, 'utf8');
+  assert.match(calls, /install --locked --dry-run node/);
+  assert.doesNotMatch(calls, /--dry-run conda:lua/);
+  assert.doesNotMatch(calls, /\|install --locked --dry-run$/m);
+  f.assertUnpublished();
+});
+
+test('final validation skips the locked dry-run when every group regenerates', t => {
+  const f = fixture(t);
+  // FAIL_VALIDATE makes any dry-run fail; with no locked group, final
+  // validation must not invoke one (a Conda group cannot pass it under
+  // mise 2026.11 safe mode even though preparation succeeded).
+  f.update({
+    LOCK_GROUPS: JSON.stringify(groups.map(group => ({ ...group, verify: 'regenerate' }))),
+    CONFIG_TOOLS: '["node", "conda:lua"]',
+    VERIFY_ONLY: 'true', NO_CHANGE: '1', FAIL_VALIDATE: '1',
+  });
+  assert.doesNotMatch(readFileSync(f.log, 'utf8'), /--dry-run/);
+  assert.equal(f.outputs().changed, 'false');
+  f.assertUnpublished();
+});
+
+test('a failing locked dry-run still fails final validation', t => {
+  const f = fixture(t);
+  assert.throws(() => f.update({ ...environment, VERIFY_ONLY: 'true', NO_CHANGE: '1', FAIL_VALIDATE: '1' }));
+  assert.match(readFileSync(f.log, 'utf8'), /install --locked --dry-run conda:lua/);
+  f.assertUnpublished();
+});
+
 test('the publisher cannot hide an unrelated deletion inside an allowed rename', t => {
   const f = fixture(t, { 'mise.lock': 'old\n', 'unrelated.txt': 'rename this unchanged\n' });
   f.run('locks'); f.run('update');
