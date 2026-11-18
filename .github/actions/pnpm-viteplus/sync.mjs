@@ -103,13 +103,18 @@ const graph = (state) => {
   assert.equal(vp.version, state.version, 'Synchronization must not update Vite+');
   assert.equal(vp.dependencies?.vitest, state.bundled, 'Bundled Vitest changed during synchronization');
   const fromRunner = createRequire(vpPath);
-  const coveragePath = packagePath('@vitest/coverage-v8');
   const runnerPath = packagePath('vitest', fromRunner);
-  const fromCoverage = createRequire(coveragePath);
   assert.deepEqual(lockedVitestVersions(), [state.bundled], 'The lockfile must resolve a single Vitest version');
-  assert.equal(manifest(coveragePath).version, state.bundled, 'Coverage and bundled Vitest differ');
   assert.equal(manifest(runnerPath).version, state.bundled, 'The runner differs from bundled Vitest');
-  assert.equal(realpathSync(packagePath('vitest', fromCoverage)), realpathSync(runnerPath), 'Multiple Vitest instances are resolved');
+  // Coverage is opt-in: projects that do not declare it skip every
+  // coverage check. States written before this field existed keep the
+  // previous behavior of requiring coverage.
+  if (state.coverage !== false) {
+    const coveragePath = packagePath('@vitest/coverage-v8');
+    const fromCoverage = createRequire(coveragePath);
+    assert.equal(manifest(coveragePath).version, state.bundled, 'Coverage and bundled Vitest differ');
+    assert.equal(realpathSync(packagePath('vitest', fromCoverage)), realpathSync(runnerPath), 'Multiple Vitest instances are resolved');
+  }
   const vite = manifest(packagePath('vite', fromRunner));
   assert.equal(vite.name, '@voidzero-dev/vite-plus-core', 'The Vite alias does not match');
   if (state.core) assert.equal(vite.version, state.core, 'The Vite core differs from bundled Vite');
@@ -147,26 +152,31 @@ function synchronize() {
   const before = readDeclarations();
   const project = JSON.parse(before[0]);
   const coverage = project.devDependencies?.['@vitest/coverage-v8'];
-  assert.equal(typeof coverage, 'string', 'Declare @vitest/coverage-v8 in devDependencies');
-  assert.match(coverage, /^\d+(?:\.\d+\.\d+)?$/, 'Coverage must use a major-only declaration or an exact stable version');
+  const hasCoverage = coverage !== undefined;
+  if (hasCoverage) {
+    assert.equal(typeof coverage, 'string', '@vitest/coverage-v8 must be declared as a version string in devDependencies');
+    assert.match(coverage, /^\d+(?:\.\d+\.\d+)?$/, 'Coverage must use a major-only declaration or an exact stable version');
+  }
   pnpm('install', '--frozen-lockfile');
   const vp = manifest(packagePath('vite-plus'));
   const bundled = vp.dependencies?.vitest;
   assert.equal(typeof bundled, 'string', 'Vite+ must declare its bundled Vitest');
   assert.match(bundled, /^\d+\.\d+\.\d+$/, 'Bundled Vitest must be an exact stable version');
-  assert.equal(bundled.split('.')[0], coverage.split('.')[0], 'Vite+ changed its bundled Vitest major; review compatibility before updating');
+  if (hasCoverage) {
+    assert.equal(bundled.split('.')[0], coverage.split('.')[0], 'Vite+ changed its bundled Vitest major; review compatibility before updating');
+  }
   const state = {
     component: 'pnpm-viteplus', base: git('rev-parse', 'HEAD'), root: git('rev-parse', '--show-toplevel'),
-    verifyOnly: process.env.VERIFY_ONLY, version: vp.version, bundled, unrelated: unrelated(project),
+    verifyOnly: process.env.VERIFY_ONLY, version: vp.version, bundled, coverage: hasCoverage, unrelated: unrelated(project),
   };
 
   const alias = vp.dependencies?.vite;
   assert.equal(typeof alias, 'string', 'Vite+ must declare its bundled Vite alias');
   assert.match(alias, /^npm:@voidzero-dev\/vite-plus-core@\d+\.\d+\.\d+$/, 'Bundled Vite must be an exact stable alias');
   state.core = alias.split('@').at(-1);
-  project.devDependencies['@vitest/coverage-v8'] = bundled;
+  if (hasCoverage) project.devDependencies['@vitest/coverage-v8'] = bundled;
   const workspace = synchronizeOverrides(before[1], { vite: alias, vitest: bundled });
-  const expected = [coverage === bundled ? before[0] : `${JSON.stringify(project, null, 2)}\n`, workspace];
+  const expected = [hasCoverage && coverage !== bundled ? `${JSON.stringify(project, null, 2)}\n` : before[0], workspace];
   if (process.env.VERIFY_ONLY === 'true') {
     assert.deepEqual(before, expected, 'Vite+ declarations are out of date; regenerate and commit them');
   } else {
@@ -180,7 +190,7 @@ function synchronize() {
     assert.equal(result.status, 0, result.stderr || String(result.error));
   } else if (state.declarations.some((text, index) => text !== before[index])) {
     pnpm('install', '--no-frozen-lockfile');
-  } else if (verifyGraph().status !== 0) {
+  } else if (hasCoverage && verifyGraph().status !== 0) {
     pnpm('update', `@vitest/coverage-v8@${bundled}`, '--no-save');
   }
   pnpm('install', '--frozen-lockfile');
@@ -191,7 +201,9 @@ function synchronize() {
   assert(modified.every(path => [...declarations, 'pnpm-lock.yaml'].includes(path) || isAllowedArtifact(path, allowed)), 'Only dependency artifacts may change');
   assert.equal(git('ls-files', '--others', '--exclude-standard'), '', 'Synchronization created unrelated files');
   git('diff', '--check');
-  console.log(`Vite+ ${vp.version}: verified single Vitest / coverage ${bundled}`);
+  console.log(hasCoverage
+    ? `Vite+ ${vp.version}: verified single Vitest / coverage ${bundled}`
+    : `Vite+ ${vp.version}: verified single Vitest ${bundled} (coverage not declared)`);
 }
 
 switch (process.argv[2]) {

@@ -60,7 +60,7 @@ Tool preparation without mise: make `node` and `pnpm` available to later steps i
 
 Setting `pmOnFail: error` is recommended to align local commands with this policy. Shared components always supply the CLI flag, so a missing setting alone does not fail them. pnpm's native checks reject a prepared pnpm version that disagrees with the project's package-manager declaration.
 
-Vite+ prerequisites: tracked root `package.json`, `pnpm-workspace.yaml` and `pnpm-lock.yaml`. Declare coverage as a major or an exact stable version. A bundled Vitest major change requires compatibility review. Ambiguous overrides and YAML flow mappings, anchors or aliases fail rather than being rewritten.
+Vite+ prerequisites: tracked root `package.json`, `pnpm-workspace.yaml` and `pnpm-lock.yaml`. Coverage is optional: when `@vitest/coverage-v8` is declared, declare it as a major or an exact stable version and it is kept aligned with the bundled Vitest; when it is not declared, coverage synchronization and checks are skipped. A bundled Vitest major change requires compatibility review. Ambiguous overrides and YAML flow mappings, anchors or aliases fail rather than being rewritten.
 
 ## Consumer composition
 
@@ -140,7 +140,7 @@ Example lock group:
 
 Additional tasks must not change dependency declarations, effective mise configuration, managed lockfiles or sidecars. Configuration additions and removals also fail. Listing a dependency input in `post-update-paths` does not lift this restriction. Additional outputs may be created, changed or removed. Move dependency-changing work from existing tasks to preparation before the task.
 
-If preparation ran for the same checkout and commit, its state is required; a missing connection fails instead of switching to standalone verification. Standalone or non-mise validation never clears another preparation's inventories. After additional generation, final validation checks mise locks when `mise-state` is supplied. Both configurations run a frozen installation with the same executables/options; supplying `viteplus-state` also enables Vite+ declaration and graph validation. Vite+ checks coverage against bundled Vitest, one Vitest instance, the Vite core alias, unchanged selected Vite+ and unchanged unrelated dependency versions. Verification never repairs declarations or pnpm lockfiles.
+If preparation ran for the same checkout and commit, its state is required; a missing connection fails instead of switching to standalone verification. Standalone or non-mise validation never clears another preparation's inventories. After additional generation, final validation checks mise locks when `mise-state` is supplied. Both configurations run a frozen installation with the same executables/options; supplying `viteplus-state` also enables Vite+ declaration and graph validation. Vite+ checks one Vitest instance, the Vite core alias, unchanged selected Vite+ and unchanged unrelated dependency versions, and, when coverage is declared, its alignment with bundled Vitest. Verification never repairs declarations or pnpm lockfiles.
 
 ## What remains in the consumer
 

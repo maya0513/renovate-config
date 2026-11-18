@@ -59,7 +59,7 @@ mise以外でのツール準備：同じジョブの後続ステップで`node`�
 
 `pmOnFail: error`の設定はローカル実行も同じ方針に揃えるための推奨です。共通処理ではCLIで常に指定するため、設定ファイルへの記載がないこと自体では失敗しません。準備したpnpmがプロジェクトのパッケージマネージャー宣言と異なる場合は、pnpm標準の検査で拒否します。
 
-Vite+構成：rootの`package.json`、`pnpm-workspace.yaml`、`pnpm-lock.yaml`が必要です。coverageはmajorのみ、または安定版の完全バージョンで宣言します。内蔵Vitestのmajorが変わる場合は互換性のレビューが必要です。曖昧なoverride、YAMLのflow mapping・anchor・aliasは書き換えずエラーにします。
+Vite+構成：rootの`package.json`、`pnpm-workspace.yaml`、`pnpm-lock.yaml`が必要です。coverageは任意です。`@vitest/coverage-v8`を宣言する場合はmajorのみ、または安定版の完全バージョンで宣言し、内蔵Vitestと一致するよう同期します。宣言しない場合はcoverageの同期と照合を省略します。内蔵Vitestのmajorが変わる場合は互換性のレビューが必要です。曖昧なoverride、YAMLのflow mapping・anchor・aliasは書き換えずエラーにします。
 
 ## 利用先での組み合わせ
 
@@ -139,7 +139,7 @@ lock groupの例：
 
 追加生成タスクは依存宣言、有効なmise設定、管理対象lockfile・sidecarを変更できません。設定の追加・削除も拒否します。`post-update-paths`への指定では制限を解除できません。追加生成物の作成・変更・削除は可能です。依存を更新していた既存タスクは、タスク開始前の準備処理へ移してください。
 
-最終検証：同じcheckout・コミットで準備部品を呼んだ場合、そのstateは必須です。接続漏れを単独検証として扱わずエラーにします。単独検証やmiseなしの検証で、他の準備処理の一覧を消去することはありません。追加生成の後、`mise-state`を渡した場合はmiseのlocked検証を行います。どちらの構成でも同じ実行環境・オプションでfrozen installを行い、`viteplus-state`を渡した場合はVite+の宣言・依存グラフも検証します。Vite+はcoverageと内蔵Vitestの一致、一つのVitestインスタンス、Vite core alias、選択済みVite+と無関係な依存が変わっていないことを確認します。検証モードでは宣言・pnpm lockfileを修復しません。
+最終検証：同じcheckout・コミットで準備部品を呼んだ場合、そのstateは必須です。接続漏れを単独検証として扱わずエラーにします。単独検証やmiseなしの検証で、他の準備処理の一覧を消去することはありません。追加生成の後、`mise-state`を渡した場合はmiseのlocked検証を行います。どちらの構成でも同じ実行環境・オプションでfrozen installを行い、`viteplus-state`を渡した場合はVite+の宣言・依存グラフも検証します。Vite+は一つのVitestインスタンス、Vite core alias、選択済みVite+と無関係な依存が変わっていないことを確認し、coverageを宣言している場合は内蔵Vitestとの一致も確認します。検証モードでは宣言・pnpm lockfileを修復しません。
 
 ## 利用先に残る記述
 

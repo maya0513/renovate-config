@@ -6,7 +6,7 @@ import { fixture as artifactFixture, write } from './pnpm-artifacts.ts';
 export interface ViteplusOptions {
   workspace?: string;
   exact?: boolean; aligned?: boolean; declarations?: boolean; miseChanges?: boolean;
-  duplicate?: boolean; major?: boolean; invalid?: boolean; alias?: boolean;
+  duplicate?: boolean; major?: boolean; invalid?: boolean; alias?: boolean; noCoverage?: boolean;
   instance?: boolean; symlink?: boolean; fail?: boolean; mutate?: boolean;
   unrelated?: boolean; unrelatedVersion?: boolean; unfixed?: boolean; viteChanged?: boolean; invalidCore?: boolean;
 }
@@ -19,7 +19,7 @@ export function fixture(t: TestContext, options: ViteplusOptions = {}) {
   const f = artifactFixture(t, {
     '.gitignore': 'node_modules/\n.cache/\n',
     'mise.lock': 'old lock\n',
-    'package.json': `${JSON.stringify({ type: 'module', engines: { node: process.versions.node }, packageManager: 'pnpm@12.10.1', devDependencies: { 'vite-plus': '1', '@vitest/coverage-v8': options.major ? '5' : options.exact ? '5.0.3' : options.declarations ? '5' : bundled, ...(options.unrelatedVersion ? { other: '^1.0.0' } : {}) } }, null, 2)}\n`,
+    'package.json': `${JSON.stringify({ type: 'module', engines: { node: process.versions.node }, packageManager: 'pnpm@12.10.1', devDependencies: { 'vite-plus': '1', ...(options.noCoverage ? {} : { '@vitest/coverage-v8': options.major ? '5' : options.exact ? '5.0.3' : options.declarations ? '5' : bundled }), ...(options.unrelatedVersion ? { other: '^1.0.0' } : {}) } }, null, 2)}\n`,
     'pnpm-workspace.yaml': options.workspace ?? (options.declarations ? workspace : workspace.replace('vite-plus-core@1.0.0', 'vite-plus-core@1.0.1')),
     'pnpm-lock.yaml': `lockfileVersion: '9.0'\npackages:\n  vitest@${options.declarations ? '5.0.1' : bundled}:\n${options.duplicate ? '  vitest@5.0.9:\n' : ''}  coverage@${initialCoverage}:\n`,
   }, env);
@@ -28,7 +28,7 @@ export function fixture(t: TestContext, options: ViteplusOptions = {}) {
     vitest: options.invalid ? '^5.0.1' : bundled, vite: options.invalidCore ? '^1.0.1' : 'npm:@voidzero-dev/vite-plus-core@1.0.1',
   } });
   pkg('vitest', { name: 'vitest', version: options.declarations ? '5.0.1' : bundled });
-  pkg('@vitest/coverage-v8', { name: '@vitest/coverage-v8', version: initialCoverage });
+  if (!options.noCoverage) pkg('@vitest/coverage-v8', { name: '@vitest/coverage-v8', version: initialCoverage });
   if (options.instance) pkg('@vitest/coverage-v8/node_modules/vitest', { name: 'vitest', version: bundled });
   if (options.symlink) {
     pkg('coverage-old', { name: '@vitest/coverage-v8', version: initialCoverage });
