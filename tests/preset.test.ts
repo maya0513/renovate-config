@@ -430,25 +430,25 @@ test('npm caret ranges keep in-range declarations and propose manual major updat
 });
 
 test('local dry-run preserves presets before and after the repository preset', async () => {
-  const local = { dependencyDashboard: false };
+  const local = { dependencyDashboard: { enabled: false } };
   const self = 'local>maya0513/renovate-config';
   const before = await resolveLocalConfig(local, { extends: [':dependencyDashboard', self] });
   const after = await resolveLocalConfig(local, { extends: [self, ':dependencyDashboard'] });
-  const override = await resolveLocalConfig(local, { extends: [self, ':dependencyDashboard'], dependencyDashboard: false });
-  assert.equal(before.dependencyDashboard, false);
-  assert.equal(after.dependencyDashboard, true);
-  assert.equal(override.dependencyDashboard, false);
+  const override = await resolveLocalConfig(local, { extends: [self, ':dependencyDashboard'], dependencyDashboard: { enabled: false } });
+  assert.deepEqual(before.dependencyDashboard, { enabled: false });
+  assert.deepEqual(after.dependencyDashboard, { enabled: true });
+  assert.deepEqual(override.dependencyDashboard, { enabled: false });
 });
 
 test('local dry-run respects ignored presets and an absent self reference', async () => {
   const self = 'local>maya0513/renovate-config';
-  const ignored = await resolveLocalConfig({ dependencyDashboard: false }, {
+  const ignored = await resolveLocalConfig({ dependencyDashboard: { enabled: false } }, {
     extends: [self, ':dependencyDashboard'], ignorePresets: [self],
   });
-  assert.equal(ignored.dependencyDashboard, true);
+  assert.deepEqual(ignored.dependencyDashboard, { enabled: true });
   const absent = await resolveLocalConfig({ automerge: true }, { extends: [':dependencyDashboard'] });
   assert.equal(absent.automerge, undefined);
-  assert.equal(absent.dependencyDashboard, true);
+  assert.deepEqual(absent.dependencyDashboard, { enabled: true });
 });
 
 test('GitHub Actions and reusable workflows are eligible for SHA pinning', async () => {
