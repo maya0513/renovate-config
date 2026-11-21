@@ -162,6 +162,16 @@ The publisher checks out the original SHA and downloads the patch and data manif
 
 There are no old-name compatibility files. Pin consumers' old preset references to an existing SHA before merging the shared deletion. Then migrate to the new preset name and components at the same reviewed SHA. [Issue #3](https://github.com/maya0513/renovate-config/issues/3) remains incomplete until consumer migration, full CI and latest-SHA CI after App publication have been confirmed.
 
+## When a Vite+ security PR does not converge
+
+Renovate recreates an automerge branch when its base branch advances, and the publisher's repair commits use an author listed in `gitIgnoredAuthors`, so a recreation discards the repair. The update workflow runs again on the recreated branch and the publisher re-applies the repair, so the PR normally converges once the base branch stops moving. Security PRs are reprocessed continuously and show this first: while the base keeps moving, the branch can alternate between Renovate's commit, whose checks fail because the derived declarations are not yet synchronized, and the repaired commit, whose checks pass.
+
+If a security PR does not converge, land the same update manually instead of waiting:
+
+1. On a human branch, update the Vite+ package and apply the same synchronization the shared component performs: set the `@vitest/coverage-v8` declaration and the `pnpm-workspace.yaml` overrides for Vite core and Vitest to the versions bundled with the new Vite+, then regenerate `pnpm-lock.yaml` with pnpm.
+2. Merge that PR after the consumer's usual checks pass.
+3. Close the Renovate security PR as superseded. Do not request a rebase or regeneration on it.
+
 ## Issue #3 verification boundary
 
 | Issue requirement | Repository verification | Remaining evidence |

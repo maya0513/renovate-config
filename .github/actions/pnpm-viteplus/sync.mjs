@@ -71,8 +71,19 @@ function synchronizeOverrides(workspace, overrides) {
     if (matches.length === 1) {
       const { index, match } = matches[0];
       assert.match(match[5], /^(?:'[^']*'|"[^"\\]*"|[^\s{}\[\]&*!#]+)(?:\s+#.*)?$/, `Unsupported ${name} override scalar`);
-      const previous = match[5].replace(/\s+#.*$/, '').replace(/^['"]|['"]$/g, '');
-      if (previous !== value) lines[index] = `${match[1]}${JSON.stringify(match[2] ?? match[3] ?? match[4])}: ${JSON.stringify(value)}`;
+      const scalar = /^(?:'[^']*'|"[^"\\]*"|[^\s{}\[\]&*!#]+)/.exec(match[5])[0];
+      const previous = scalar.replace(/^['"]|['"]$/g, '');
+      if (previous !== value) {
+        // Replace only the scalar: keep the key as written, the scalar's
+        // quoting style and any trailing comment, so unrelated formatting
+        // in a hand-maintained workspace file is not normalized away.
+        const key = match[2] !== undefined ? `'${match[2]}'` : match[3] !== undefined ? `"${match[3]}"` : match[4];
+        let rendered = value;
+        if (scalar.startsWith('"')) rendered = JSON.stringify(value);
+        else if (scalar.startsWith("'")) rendered = value.includes("'") ? JSON.stringify(value) : `'${value}'`;
+        else if (!/^[^\s{}\[\]&*!#'"]+$/.test(value)) rendered = JSON.stringify(value);
+        lines[index] = `${match[1]}${key}: ${rendered}${match[5].slice(scalar.length)}`;
+      }
     } else {
       const indent = /^ +/.exec(lines.slice(start + 1, end).find(line => /^ +\S/.test(line)) ?? '')?.[0] ?? '  ';
       lines.splice(end++, 0, `${indent}${JSON.stringify(`${name}@*`)}: ${JSON.stringify(value)}`);

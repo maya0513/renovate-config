@@ -262,6 +262,16 @@ test('declaration synchronization inserts missing overrides and preserves neighb
   });
 });
 
+test('declaration synchronization replaces only override values in a plain-style workspace', t => {
+  const f = fixture(t, {
+    exact: true, declarations: true,
+    workspace: "overrides:\n  vite: npm:@voidzero-dev/vite-plus-core@1.0.0 # hand-maintained\n  vitest: 5.0.1\npeerDependencyRules:\n  allowedVersions:\n    vite: '1'\n",
+  });
+  f.update();
+  assert.equal(readFileSync(join(f.repo, 'pnpm-workspace.yaml'), 'utf8'),
+    "overrides:\n  vite: npm:@voidzero-dev/vite-plus-core@1.0.1 # hand-maintained\n  vitest: 5.0.2\npeerDependencyRules:\n  allowedVersions:\n    vite: '1'\n");
+});
+
 test('final validation catches post-task corruption of synchronized declarations', t => {
   const f = fixture(t, { miseChanges: true }); f.run('locks', f.env); f.run('sync', f.env);
   write(f.repo, 'package.json', '{}\n'); assert.throws(() => f.run('update', f.env));
